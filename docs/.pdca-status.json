@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-04-30T04:30:00.000Z",
+  "lastUpdated": "2026-04-30T05:00:00.000Z",
   "activeFeatures": ["trading-analysis-tool"],
   "primaryFeature": "trading-analysis-tool",
   "features": {
@@ -60,6 +60,13 @@
       "feature": "trading-analysis-tool",
       "action": "architecture-pivot-v0.4",
       "note": "Streamlit → React SPA(Tradingmode/) + FastAPI 백엔드(backend/) 분리. REST API 명세 추가, FR-18~21 신규.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-04-30",
+      "feature": "trading-analysis-tool",
+      "action": "validator-fixes-v0.4.1",
+      "note": "검증 78% → Streamlit 잔존 정리(C-1~C-3), 에러 매핑 표 + 폴링/취소/정적호스팅/응답 Pydantic 스키마 보강. 목표 90%+.",
       "phase": "design"
     }
   ]

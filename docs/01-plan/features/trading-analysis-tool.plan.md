@@ -120,7 +120,8 @@ project_version: 0.1.0
 - [ ] 모든 High 우선순위 기능 요구사항(FR) 구현 완료
 - [ ] BTC/USDT, 삼성전자(005930) 두 종목으로 end-to-end 시연 가능
 - [ ] 추세 판별·매매 신호·백테스팅이 한 화면에서 확인 가능
-- [ ] `pip install -r requirements.txt && streamlit run app.py` 한 줄로 실행
+- [ ] 백엔드: `pip install -r backend/requirements.txt && uvicorn backend.main:app --reload --port 8000` 으로 기동
+- [ ] 프론트: `python -m http.server 5500 --directory Tradingmode` 으로 호스팅, `http://localhost:5500` 접속
 - [ ] README에 실행법·사용 예시 문서화
 
 ### 4.2 Quality Criteria
@@ -243,14 +244,7 @@ C:/X/new/
 └── data/                          # parquet 캐시 (gitignore, 백엔드가 사용)
 
 # 모든 Python 패키지 폴더에 `__init__.py` 자동 생성 (생략 표기).
-├── tests/
-│   ├── test_indicators.py
-│   ├── test_signals.py
-│   └── test_backtest.py
-├── data/                      # parquet 캐시 (gitignore)
-├── requirements.txt
-├── pyproject.toml
-└── README.md
+# tests/, requirements.txt, pyproject.toml은 backend/ 내부에 위치 (위 트리 참조).
 ```
 
 ---
@@ -269,7 +263,7 @@ C:/X/new/
 | Category | Current State | To Define | Priority |
 |----------|---------------|-----------|:--------:|
 | **Naming** | missing | snake_case (함수/변수), PascalCase (클래스), UPPER_CASE (상수) | High |
-| **Folder structure** | missing | core/lib/types/pages 분리 (위 6.3 기준) | High |
+| **Folder structure** | missing | `Tradingmode/`(프론트) + `backend/{api,core,lib,tests}` 분리 (위 6.3 기준) | High |
 | **Import order** | missing | stdlib → 3rd-party → local (isort 호환) | Medium |
 | **Environment variables** | missing | `.env` + `python-dotenv` 사용 | Medium |
 | **Error handling** | missing | 데이터 수집 실패 → 사용자 친화적 메시지 + 로그 | Medium |
@@ -300,7 +294,7 @@ C:/X/new/
 | Phase 1 (Schema) | ☐ | `docs/01-plan/schema.md` | `/pipeline-next` |
 | Phase 2 (Convention) | ☐ | `docs/01-plan/conventions.md` | `/pipeline-next` |
 
-> Streamlit 단일 앱 구조이므로 Phase 3(목업)·Phase 5(디자인 시스템)은 간소화 가능. 추후 Design 단계에서 결정.
+> Phase 3(목업)·Phase 5(디자인 시스템)은 v0.4에서 사용자 제공 React 프로토타입(`Tradingmode/`)이 두 역할을 동시에 수행 — 다크 테마 / OKLCH 색상 토큰 / JetBrains Mono / TRADINGMODE.LAB 브랜딩이 디자인 시스템.
 
 ---
 
@@ -322,3 +316,4 @@ C:/X/new/
 | 0.2 | 2026-04-29 | AI 신호 해석(Groq), 포트폴리오 분석(MVP), 자동매매 어댑터 인터페이스(placeholder) 추가. 시중 OSS 대비 차별화 강화. | 900033@interojo.com |
 | 0.3 | 2026-04-29 | design-validator 검증(86% → 목표 90%+) 후속 수정: Stochastic 명세 정합화, EMA(12/26)는 MACD 내부용 명시, errors.py를 core/types/로 이동, types/ 경로 통일, Phase 5 Pipeline N/A 명시. | 900033@interojo.com |
 | 0.4 | 2026-04-30 | **아키텍처 피벗**: Streamlit 단일 스택 → React SPA(`Tradingmode/`) + FastAPI 백엔드(`backend/`) 분리. 사용자 제공 React 프로토타입을 정식 프론트로 채택. REST API 엔드포인트 정의(FR-18~21), TopBar 시세 테이프·Watchlist·DataStatusBar 추가. CORS, API 키 백엔드 보호, OpenAPI 스키마 동기화 리스크 신규. | 900033@interojo.com |
+| 0.4.1 | 2026-04-30 | design-validator 재검증(78%) 후속 수정: Plan §4.1 Definition of Done을 백엔드/프론트 두 명령으로 분리(streamlit run 제거), §6.3 폴더 구조 끝 중복 항목 제거, §7.2 Folder structure 가이드 갱신, §7.4 Pipeline note를 React 프로토타입 기반으로 갱신. | 900033@interojo.com |

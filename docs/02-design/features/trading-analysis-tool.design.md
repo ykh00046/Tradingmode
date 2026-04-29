@@ -435,6 +435,7 @@ DataFrame 스키마는 §3.1 OHLCV와 동일.
 | `core.portfolio` | `analyze(portfolio, as_of=None) -> PortfolioAnalysis` | 포트폴리오 일괄 분석 |
 | `core.portfolio` | `aggregate_trend(holdings_analysis) -> dict[TrendState, int]` | 추세 분포 집계 |
 | `core.brokers.base` | `class BrokerProtocol(Protocol): place_order(req) -> OrderResult` | v3 인터페이스 정의 (구현 X) |
+| `core.market_snapshot` | `fetch_snapshot() -> MarketSnapshot` | KOSPI/KOSDAQ/USD-KRW/BTC/DXY/VIX 일괄 조회 (TopBar용). DXY/VIX는 `FinanceDataReader('DXY')`/`('VIX')` 사용 |
 
 ### 4.2 핵심 함수 시그니처 상세
 
@@ -779,7 +780,78 @@ class MarketSnapshot(BaseModel):
     dxy: dict
     vix: dict
     timestamp: int
+
+# === 응답 스키마 (dataclass → Pydantic 변환) ===
+
+class AICommentaryResponse(BaseModel):
+    signal_kind: str
+    timestamp: int                # unix ms (pd.Timestamp → ms)
+    summary: str
+    detail: str
+    confidence: Literal["low", "medium", "high"]
+    model: str
+    generated_at: int
+    disclaimer: str
+
+class HoldingAnalysisResponse(BaseModel):
+    market: str
+    symbol: str
+    quantity: float
+    avg_price: float
+    currency: str
+    current_price_local: float
+    current_price: float          # base_currency 기준
+    market_value: float
+    cost_basis: float
+    pnl: float
+    pnl_pct: float
+    weight: float
+    fx_rate: float
+    trend: Literal["uptrend", "downtrend", "sideways"]
+    latest_signals: list[dict]    # 최근 N개 (Signal 직렬화)
+
+class FxQuoteResponse(BaseModel):
+    pair: str                     # "USDT/KRW"
+    rate: float
+    as_of: int                    # unix ms
+    source: str
+
+class PortfolioAnalysisResponse(BaseModel):
+    holdings_analysis: list[HoldingAnalysisResponse]
+    total_market_value: float
+    total_cost_basis: float
+    total_pnl: float
+    total_pnl_pct: float
+    trend_summary: dict[str, int]  # {"uptrend": 3, "downtrend": 1, "sideways": 2}
+    base_currency: Literal["KRW", "USD"]
+    fx_rates: dict[str, FxQuoteResponse]
+    as_of: int
+
+class BacktestResultResponse(BaseModel):
+    total_return: float
+    annual_return: float
+    max_drawdown: float
+    win_rate: float
+    sharpe_ratio: float
+    num_trades: int
+    equity_curve: list[dict]      # [{t: unix_ms, equity: float}, ...] (pd.Series → list of dict)
+    trades: list[dict]            # [{entry_t, exit_t, side, qty, entry_price, exit_price, pnl}, ...]
 ```
+
+**dataclass ↔ Pydantic ↔ JSON 직렬화 매핑**
+
+| 도메인 (`core/types/schemas.py`) | API 응답 (`backend/api/schemas.py`) | JSON 직렬화 처리 |
+|---------------------------------|-------------------------------------|-----------------|
+| `Signal` (frozen dataclass) | inline dict in `SignalsResponse.signals` | enum → str.value, pd.Timestamp → unix ms |
+| `AICommentary` | `AICommentaryResponse` | timestamp/generated_at → unix ms |
+| `Holding` | inline in `HoldingAnalysisResponse` | as-is |
+| `HoldingAnalysis` | `HoldingAnalysisResponse` | trend Enum → str |
+| `FxQuote` | `FxQuoteResponse` | as_of → unix ms |
+| `PortfolioAnalysis` | `PortfolioAnalysisResponse` | trend_summary 키 enum→str |
+| `BacktestResult` | `BacktestResultResponse` | **`pd.Series`/`DataFrame` → `list[dict]`** |
+| `TrendState`, `SignalKind`, `SignalAction`, `Market`, `Interval` | `Literal[...]` 또는 `str` | Enum.value 사용 |
+
+> **변환 헬퍼**: `backend/api/converters.py`에 `to_response(dataclass) -> Pydantic` 함수 모음. dataclass의 `pd.Timestamp` 필드는 `int(ts.timestamp() * 1000)`로 변환.
 
 ### 4.5.3 CORS 정책
 
@@ -811,61 +883,152 @@ app.add_middleware(
 }
 ```
 
-| HTTP | code | 발생 시점 |
-|------|------|----------|
-| 400 | `INVALID_INPUT` | 입력 검증 실패 |
-| 404 | `INVALID_SYMBOL` | 심볼 미존재 |
-| 422 | `INSUFFICIENT_DATA` | 지표 계산 데이터 부족 |
-| 429 | `RATE_LIMIT_EXCEEDED` | 외부 API rate limit (Binance 1200/min) |
-| 502 | `DATA_SOURCE_ERROR` | 외부 API 호출 실패 |
-| 503 | `AI_SERVICE_ERROR` | Groq API 실패 (AI 해설 호출 시) |
-| 500 | `INTERNAL_ERROR` | 그 외 |
+| HTTP | code | 도메인 예외 (`core/types/errors.py`) | 발생 시점 |
+|------|------|---------------------------------------|----------|
+| 400 | `INVALID_INPUT` | `PortfolioError`, Pydantic `ValidationError` | 입력 검증 실패 (CSV 형식, 필수 필드 누락) |
+| 404 | `INVALID_SYMBOL` | `InvalidSymbolError` | 심볼 미존재 |
+| 422 | `INSUFFICIENT_DATA` | `InsufficientDataError` | 지표 계산 데이터 부족 (예: SMA_120인데 데이터 100개) |
+| 429 | `RATE_LIMIT_EXCEEDED` | `DataSourceError` with `rate_limit=True` | 외부 API rate limit (Binance 1200/min) |
+| 502 | `DATA_SOURCE_ERROR` | `DataSourceError` (rate_limit 외) | 외부 API 호출 실패 (timeout, 네트워크) |
+| 503 | `AI_SERVICE_ERROR` | `AIServiceError` | Groq API 실패 — 해설만 영향, 신호는 정상 |
+| 500 | `INTERNAL_ERROR` | `CacheError`, 그 외 `Exception` | 캐시 I/O 실패, 예상 못한 에러 |
+
+> **중요**: `CacheError`는 백엔드 내부에서 가능하면 graceful (로그 남기고 캐시 우회 fetch)로 처리, 사용자에게는 `INTERNAL_ERROR`로 노출되지 않는 것이 이상적. 노출은 라스트 리조트.
 
 ### 4.5.5 프론트 fetch 패턴 (`Tradingmode/api.js`)
 
 ```javascript
 // api.js — 모든 백엔드 호출의 단일 진입점
+// 핵심 정책: AbortController, 타임아웃, 응답 검증, ApiError 표준화
+
 const API_BASE = window.API_BASE_URL || 'http://localhost:8000';
-
-async function apiGet(path, params = {}) {
-  const url = new URL(API_BASE + path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(body?.error?.code || 'UNKNOWN', body?.error?.message || res.statusText, res.status);
-  }
-  return res.json();
-}
-
-async function apiPost(path, body) {
-  const res = await fetch(API_BASE + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) { /* same error handling */ }
-  return res.json();
-}
+const DEFAULT_TIMEOUT = 15000;  // 15s
 
 class ApiError extends Error {
-  constructor(code, message, status) {
+  constructor(code, message, status, details = {}) {
     super(message);
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
+// 공통 응답 검증 (apiGet/apiPost가 공유)
+async function _check(res) {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = body?.error || {};
+    throw new ApiError(
+      err.code || 'UNKNOWN',
+      err.message || res.statusText,
+      res.status,
+      err.details || {}
+    );
+  }
+  return res.json();
+}
+
+// 타임아웃 + AbortSignal 결합 (사용자 signal과 자동 timeout 둘 다 지원)
+function _withTimeout(signal, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(new ApiError('TIMEOUT', `요청 시간 초과 (${ms}ms)`, 0)), ms);
+  if (signal) signal.addEventListener('abort', () => ctl.abort(signal.reason));
+  return { signal: ctl.signal, clear: () => clearTimeout(t) };
+}
+
+async function apiGet(path, params = {}, { signal, timeout = DEFAULT_TIMEOUT } = {}) {
+  const url = new URL(API_BASE + path);
+  Object.entries(params).forEach(([k, v]) => v !== undefined && url.searchParams.set(k, v));
+  const { signal: s, clear } = _withTimeout(signal, timeout);
+  try {
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: s });
+    return await _check(res);
+  } finally { clear(); }
+}
+
+async function apiPost(path, body, { signal, timeout = DEFAULT_TIMEOUT } = {}) {
+  const { signal: s, clear } = _withTimeout(signal, timeout);
+  try {
+    const res = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(body),
+      signal: s,
+    });
+    return await _check(res);
+  } finally { clear(); }
+}
+
 window.api = {
-  ohlcv:    (params)  => apiGet('/api/ohlcv', params),
-  indicators: (params) => apiGet('/api/indicators', params),
-  signals:  (params)  => apiGet('/api/signals', params),
-  trend:    (params)  => apiGet('/api/trend', params),
-  marketSnapshot: ()  => apiGet('/api/market/snapshot'),
-  aiExplain: (body)   => apiPost('/api/ai/explain', body),
-  portfolio: (body)   => apiPost('/api/portfolio', body),
-  backtest: (body)    => apiPost('/api/backtest', body),
+  health:         (opt)        => apiGet('/api/health', {}, opt),
+  ohlcv:          (params, opt) => apiGet('/api/ohlcv', params, opt),
+  indicators:     (params, opt) => apiGet('/api/indicators', params, opt),
+  signals:        (params, opt) => apiGet('/api/signals', params, opt),
+  trend:          (params, opt) => apiGet('/api/trend', params, opt),
+  marketSnapshot: (opt)         => apiGet('/api/market/snapshot', {}, opt),
+  aiExplain:      (body, opt)   => apiPost('/api/ai/explain', body, opt),
+  portfolio:      (body, opt)   => apiPost('/api/portfolio', body, opt),
+  backtest:       (body, opt)   => apiPost('/api/backtest', body, opt),
 };
+window.ApiError = ApiError;
+```
+
+**Race condition 회피 (종목 빠른 전환 시 마지막 요청만 반영)**
+
+```javascript
+// 컴포넌트에서 사용 패턴
+const ctlRef = useRef(null);
+async function loadCurrent(symbol) {
+  ctlRef.current?.abort();              // 직전 요청 취소
+  const ctl = new AbortController();
+  ctlRef.current = ctl;
+  try {
+    const data = await api.ohlcv({ ...params }, { signal: ctl.signal });
+    if (!ctl.signal.aborted) setCandles(data.candles);
+  } catch (e) {
+    if (e.name !== 'AbortError') handleError(e);
+  }
+}
+```
+
+### 4.5.6 폴링·캐싱 정책
+
+| 엔드포인트 | 호출 패턴 | 주기 / TTL |
+|-----------|----------|-----------|
+| `/api/market/snapshot` | TopBar에서 setInterval | **30초**, `document.visibilityState !== 'visible'` 시 일시정지, 백엔드 캐시 30s |
+| `/api/ohlcv`, `/indicators`, `/signals`, `/trend` | 종목/타임프레임 변경 시 단발 | 단발 (캐시는 백엔드 parquet) |
+| `/api/ai/explain` | 사용자 expander 클릭 시 단발 | 단발, 백엔드 (signal_kind, timestamp, model) 키로 영구 캐시 |
+| `/api/portfolio` | CSV 업로드 / 입력 변경 시 단발 | 단발 |
+| `/api/backtest` | "백테스트 실행" 버튼 단발 | 단발 |
+| `/api/health` | 앱 마운트 시 1회 (백엔드 가용성 체크) | 단발 |
+
+```javascript
+// app.jsx — TopBar 폴링 패턴
+useEffect(() => {
+  let alive = true;
+  let timerId = null;
+  const ctlRef = { current: null };
+
+  async function tick() {
+    if (!alive || document.visibilityState !== 'visible') return;
+    ctlRef.current?.abort();
+    ctlRef.current = new AbortController();
+    try {
+      const snap = await api.marketSnapshot({ signal: ctlRef.current.signal });
+      if (alive) setSnapshot(snap);
+    } catch (e) { /* TopBar 시세는 silent fail (toast 안 띄움) */ }
+  }
+
+  tick();
+  timerId = setInterval(tick, 30000);
+  document.addEventListener('visibilitychange', tick);
+  return () => {
+    alive = false;
+    clearInterval(timerId);
+    document.removeEventListener('visibilitychange', tick);
+    ctlRef.current?.abort();
+  };
+}, []);
 ```
 
 ---
@@ -890,54 +1053,74 @@ window.api = {
 | `api.js` ✨ NEW | 모든 백엔드 fetch 단일 진입점, 에러 정규화 | 자체 |
 | `styles.css` | 다크 테마, OKLCH 색상 토큰, 레이아웃 | — |
 
-### 5.1 화면 구조
+### 5.1 화면 구조 (React SPA)
 
 ```
-┌──────────────────────────────────────────────────┐
-│ Streamlit 사이드바                               │
-│  [📈 차트분석] [🎯 매매신호] [📊 백테스팅]       │
-│  [💼 포트폴리오]                                  │
-├──────────────────────────────────────────────────┤
-│ 메인 영역 (선택 페이지에 따라 변경)              │
-│                                                  │
-│ ┌─ 차트분석 페이지 ────────────────────────────┐│
-│ │ Market: [crypto ▼]  Symbol: [BTCUSDT ▼]      ││
-│ │ Interval: [1d ▼]    Period: [1년 ▼]          ││
-│ │ ─────────────────────────────────────────── ││
-│ │ [현재 추세] 🟢 상승  ADX=32  MA정배열       ││
-│ │ ─────────────────────────────────────────── ││
-│ │ [plotly 캔들차트 + SMA/EMA 오버레이]         ││
-│ │ [plotly RSI 서브차트]                        ││
-│ │ [plotly MACD 서브차트]                       ││
-│ └──────────────────────────────────────────────┘│
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ TopBar  (TRADINGMODE.LAB v0.x · DEV)                             │
+│  Logo │ KOSPI ▲0.42% · KOSDAQ ▼0.31% · USD/KRW · BTC · DXY · VIX │
+│       │                                            🟢 LIVE  KST  │
+├──────────────┬───────────────────────────────────────────────────┤
+│ Watchlist    │ Tabs: [Chart] [Signals] [Portfolio]               │
+│ (사이드바)    │ ────────────────────────────────────────────────── │
+│ [전체|KR|CR] │ DataStatusBar: 🟢 OK · Binance Spot · 캐시 적중  │
+│ ┌──────────┐ │ ┌───────────────────────────────────────────────┐│
+│ │BTCUSDT ↑ │ │ │ [현재 추세] 🟢 상승  ADX=32  MA정배열         ││
+│ │005930  · │ │ │ Interval: [1d] [1h] [15m]   Zoom: [1M][3M][1Y]││
+│ │... 미니   │ │ │ ────────────────────────────────────────── ││
+│ │ 스파크    │ │ │ [SVG 캔들차트 + SMA(5/20/60/120) 오버레이]    ││
+│ │ ─────    │ │ │ [RSI 서브차트] [MACD 서브차트]                ││
+│ └──────────┘ │ │ [드로잉: 추세선 · 피보나치]                   ││
+│              │ └───────────────────────────────────────────────┘│
+└──────────────┴───────────────────────────────────────────────────┘
+
+* Tabs 클릭 시 메인 영역만 교체 (Watchlist/TopBar는 항상 유지).
+* DataStatusBar는 매 fetch마다 OK / LOADING / RATE_LIMIT / ERROR 갱신.
 ```
 
 ### 5.2 User Flow
 
 ```
-앱 실행 (streamlit run app.py)
-    │
-    ▼
-사이드바에서 페이지 선택
-    │
-    ├─→ [차트분석]  → Market/Symbol 선택 → 데이터 로드 → 차트+추세 표시
-    │
-    ├─→ [매매신호]  → 동일 입력 → 신호 리스트 + 차트 마커 + AI 해설 expander
-    │
-    ├─→ [백테스팅]  → 동일 입력 + 전략 선택 → 결과 통계 + 자산곡선
-    │
-    └─→ [포트폴리오] → CSV 업로드/수동 입력 → 보유 종목 일괄 분석 + 추세 분포
+[1] 백엔드 기동
+    $ cd backend && uvicorn main:app --reload --port 8000
+    $ open http://localhost:8000/docs   (OpenAPI 확인)
+
+[2] 프론트 정적 호스팅
+    $ python -m http.server 5500 --directory Tradingmode
+    $ 브라우저로 http://localhost:5500 접속
+
+[3] 사용 흐름 (단일 SPA)
+    초기 로드 → app.jsx mount → api.marketSnapshot() (TopBar)
+        │                    → api.ohlcv/indicators/signals/trend (현재 종목)
+        ▼
+    Watchlist 종목 클릭 → currentSymbol 변경 → 메인 영역 자동 재페치
+        │
+        ├─→ [Chart Tab]     → charts.jsx → 캔들+지표+신호 마커+드로잉
+        │
+        ├─→ [Signals Tab]   → signals-page.jsx → 전체 universe 신호 리스트
+        │                                    → 항목 클릭 → api.aiExplain()
+        │                                    → AI 해설 expander 렌더
+        │
+        └─→ [Portfolio Tab] → portfolio-page.jsx
+                              → CSV 업로드 또는 MOCK_HOLDINGS
+                              → api.portfolio() POST → 집계 표시
+
+[4] 백테스팅 (Chart 탭 내 패널)
+    Chart 화면 우측 패널에서 전략 선택 → api.backtest() POST
+        → equity curve + 통계 표시
 ```
 
 ### 5.3 React 페이지 컴포넌트
 
 | Page | 핵심 컴포넌트 | API 호출 |
 |------|--------------|---------|
-| `app.jsx` | `TopBar`(시세 테이프), `Watchlist`(KR/CRYPTO 필터, 미니 스파크), `DataStatusBar`, 탭 라우팅 | `api.marketSnapshot()` |
-| `charts.jsx` (ChartPage) | 캔들 차트(SVG), MA 오버레이, RSI/MACD 서브차트, 드로잉 도구(trend/fib), 줌 프리셋(1M/3M/6M/1Y) | `api.ohlcv`, `api.indicators`, `api.trend`, `api.signals` |
+| `app.jsx` | `TopBar`(시세 테이프), `Watchlist`(KR/CRYPTO 필터, 미니 스파크), `DataStatusBar`, 탭 라우팅 | `api.marketSnapshot()` (30s 폴링) |
+| `charts.jsx` (ChartPage) | 캔들 차트(SVG), MA 오버레이, RSI/MACD 서브차트, 드로잉 도구(trend/fib), 줌 프리셋(1M/3M/6M/1Y), **Backtest 패널** (전략·cash·commission 선택 후 실행) | `api.ohlcv`, `api.indicators`, `api.trend`, `api.signals`, `api.backtest` |
 | `signals-page.jsx` (SignalsPage) | BUY/SELL 필터, 시장 필터, recency 슬라이더, 신호 리스트, **AI 해설 expander** | `api.signals` (universe 전체), `api.aiExplain` |
 | `portfolio-page.jsx` (PortfolioPage) | CSV 업로드, 보유 테이블(추세·손익·비중), treemap, 성과 차트(1M/3M/6M/1Y/ALL) | `api.portfolio` |
+
+> **백테스팅 위치 결정**: 별도 페이지가 아닌 `charts.jsx` 내부 우측 패널로 배치 (FR-13 "Chart 페이지 또는 별도" 중 통합 선택).
+> 이유: 백테스트는 차트 컨텍스트(현재 종목/타임프레임)를 그대로 사용, 시각적 비교 용이.
 
 ### 5.4 포트폴리오 페이지 레이아웃
 
@@ -1032,18 +1215,73 @@ class PortfolioError(TradingToolError):
 
 ### 6.3 사용자 메시지 포맷
 
+**백엔드** — FastAPI exception_handler가 도메인 예외를 표준 JSON으로 변환:
+
 ```python
-# Streamlit 페이지에서:
-try:
-    df = data_loader.fetch(req)
-except InvalidSymbolError as e:
-    st.error(f"❌ 종목 코드를 확인해주세요: {e}")
-    st.stop()
-except DataSourceError as e:
-    st.error(f"⚠️ 데이터 수집 실패: {e}")
-    st.info("💡 잠시 후 다시 시도하거나 다른 거래소를 선택하세요.")
-    st.stop()
+# backend/main.py
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from core.types.errors import (
+    DataSourceError, InvalidSymbolError, InsufficientDataError,
+    AIServiceError, PortfolioError, CacheError, TradingToolError,
+)
+
+app = FastAPI()
+
+ERROR_MAP = {
+    InvalidSymbolError:       (404, "INVALID_SYMBOL"),
+    InsufficientDataError:    (422, "INSUFFICIENT_DATA"),
+    PortfolioError:           (400, "INVALID_INPUT"),
+    AIServiceError:           (503, "AI_SERVICE_ERROR"),
+    DataSourceError:          (502, "DATA_SOURCE_ERROR"),
+    CacheError:               (500, "INTERNAL_ERROR"),
+}
+
+@app.exception_handler(TradingToolError)
+async def domain_error_handler(request: Request, exc: TradingToolError):
+    status, code = ERROR_MAP.get(type(exc), (500, "INTERNAL_ERROR"))
+    # Rate limit은 DataSourceError의 detail로 분기
+    if isinstance(exc, DataSourceError) and getattr(exc, "rate_limit", False):
+        status, code = 429, "RATE_LIMIT_EXCEEDED"
+    return JSONResponse(
+        status_code=status,
+        content={"error": {"code": code, "message": str(exc), "details": getattr(exc, "details", {})}},
+    )
 ```
+
+**프론트** — `api.js`의 `ApiError`를 catch하여 DataStatusBar/토스트로 표시:
+
+```javascript
+// charts.jsx (또는 다른 페이지)
+try {
+  setStatus({ status: 'loading', message: `${symbol} ${interval} 수집 중…`, source: ... });
+  const data = await api.ohlcv({ market, symbol, interval, start, end });
+  setStatus({ status: 'ok', message: data.cached ? '캐시 적중' : '신규 수집', source: ... });
+  setCandles(data.candles);
+} catch (e) {
+  // e: ApiError { code, message, status }
+  const statusMap = {
+    'RATE_LIMIT_EXCEEDED': { status: 'rate_limit', message: e.message },
+    'DATA_SOURCE_ERROR':   { status: 'error',      message: `데이터 수집 실패: ${e.message}` },
+    'INVALID_SYMBOL':      { status: 'error',      message: `종목 코드를 확인해주세요: ${e.message}` },
+    'INSUFFICIENT_DATA':   { status: 'error',      message: `기간이 짧습니다. 더 긴 기간을 선택하세요.` },
+    'AI_SERVICE_ERROR':    { status: 'error',      message: 'AI 해설 일시 사용 불가 (신호는 정상 표시)' },
+  };
+  setStatus(statusMap[e.code] || { status: 'error', message: e.message });
+}
+```
+
+**에러 코드 → DataStatusBar 매핑**
+
+| 백엔드 응답 `error.code` | DataStatusBar 상태 | 사용자 메시지 |
+|--------------------------|-------------------|--------------|
+| `RATE_LIMIT_EXCEEDED` | `rate_limit` (오렌지) | "Binance 1200 req/min 초과 — 60초 백오프" |
+| `DATA_SOURCE_ERROR` | `error` (빨강) | "데이터 수집 실패 (재시도 권장)" |
+| `INVALID_SYMBOL` | `error` | "종목 코드를 확인해주세요" |
+| `INSUFFICIENT_DATA` | `error` | "기간이 짧습니다" |
+| `AI_SERVICE_ERROR` | `error` (해설 영역만) | "AI 해설 사용 불가, 신호는 정상" |
+| `INTERNAL_ERROR` | `error` | "서버 오류 (로그 확인)" |
+| (성공) | `ok` (초록) / `loading` (노랑) | 평상시 |
 
 ---
 
@@ -1159,10 +1397,6 @@ Frontend ──HTTP/JSON──→ API Boundary → Application → Domain ← In
 
 | Module | Layer | Path |
 |--------|-------|------|
-| `app.py` | Presentation | `C:/X/new/app.py` |
-| `pages/1_차트분석.py` | Presentation | `C:/X/new/pages/` |
-| `pages/2_매매신호.py` | Presentation | `C:/X/new/pages/` |
-| `pages/3_백테스팅.py` | Presentation | `C:/X/new/pages/` |
 | `Tradingmode/index.html` | Frontend | `C:/X/new/Tradingmode/` |
 | `Tradingmode/app.jsx` | Frontend | `C:/X/new/Tradingmode/` |
 | `Tradingmode/charts.jsx` | Frontend | `C:/X/new/Tradingmode/` |
@@ -1225,14 +1459,18 @@ from .helpers import normalize_symbol
 
 ### 10.3 Environment Variables
 
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `BINANCE_` | Binance 인증 (선택) | `BINANCE_API_KEY`, `BINANCE_API_SECRET` |
-| `GROQ_` | Groq API 키 | `GROQ_API_KEY`, `GROQ_MODEL=llama-3.3-70b-versatile` |
-| `CACHE_` | 캐시 설정 | `CACHE_DIR=./data` |
-| `LOG_` | 로깅 설정 | `LOG_LEVEL=INFO` |
+| Prefix | Purpose | Scope | Example |
+|--------|---------|-------|---------|
+| `BINANCE_` | Binance 인증 (선택) | Backend | `BINANCE_API_KEY`, `BINANCE_API_SECRET` |
+| `GROQ_` | Groq API 키 (백엔드만 보유) | Backend | `GROQ_API_KEY`, `GROQ_MODEL=llama-3.3-70b-versatile` |
+| `CACHE_` | 캐시 설정 | Backend | `CACHE_DIR=./data` |
+| `LOG_` | 로깅 설정 | Backend | `LOG_LEVEL=INFO` |
+| `BACKEND_` | FastAPI 호스트/포트 | Backend | `BACKEND_HOST=127.0.0.1`, `BACKEND_PORT=8000` |
+| `CORS_ORIGINS` | CORS 허용 origin 콤마 구분 리스트 | Backend | `CORS_ORIGINS=http://localhost:5500,http://127.0.0.1:5500` |
+| `API_BASE_URL` | 프론트가 호출할 백엔드 URL | Frontend (런타임 주입) | `window.API_BASE_URL = 'http://localhost:8000'` |
 
-`.env` 파일 사용, `python-dotenv`로 로드, `.gitignore`에 등록.
+> 백엔드는 `.env` + `python-dotenv`. 프론트 `API_BASE_URL`은 `index.html`에 `<script>window.API_BASE_URL = '...'</script>` 또는 빌드 시 주입(v2).
+> `.gitignore`에 `.env` 등록.
 
 ### 10.4 Linting / Formatting
 
@@ -1248,11 +1486,12 @@ from .helpers import normalize_symbol
 
 | Item | 적용 |
 |------|------|
-| Component naming | snake_case 모듈, PascalCase 클래스 (예: `BinanceAdapter`) |
-| File organization | core/lib/pages 3계층 분리 |
-| State management | Streamlit `st.session_state` 최소 사용, 가능하면 stateless |
-| Error handling | `lib.errors` 커스텀 예외 + Streamlit `st.error()` 사용자 메시지 |
-| Type hints | 모든 public 함수 시그니처 필수 |
+| Component naming (백엔드) | snake_case 모듈, PascalCase 클래스 (예: `BinanceAdapter`) |
+| Component naming (프론트) | PascalCase React 컴포넌트 (`TopBar`, `Watchlist`, `ChartPage`) |
+| File organization | `Tradingmode/`(프론트) + `backend/{api,core,lib,tests}` 분리 |
+| State management | 프론트: React `useState`/`Context` (라우팅 상태·현재 종목·DataStatus). 백엔드: stateless (캐시는 parquet/JSON) |
+| Error handling | 백엔드: `core/types/errors.py` + FastAPI `exception_handler` → JSON. 프론트: `api.js` `ApiError` → DataStatusBar 갱신 + 토스트 |
+| Type hints | 백엔드: 모든 public 함수 시그니처 필수. 프론트: JSDoc `@typedef` (v0.4) → TypeScript(v2) |
 
 ---
 
@@ -1375,14 +1614,16 @@ C:/X/new/
    - [ ] `backend/tests/test_portfolio.py`
 
 5. **API Boundary Layer (60분)** ✨ NEW
-   - [ ] `backend/main.py` — FastAPI app + CORSMiddleware + 에러 핸들러
-   - [ ] `backend/api/schemas.py` — Pydantic 요청/응답 모델
+   - [ ] `backend/main.py` — FastAPI app + CORSMiddleware + `exception_handler(TradingToolError)` (§6.3 참조)
+   - [ ] `backend/api/__init__.py` — health endpoint (`/api/health`)
+   - [ ] `backend/api/schemas.py` — Pydantic 요청/응답 모델 (§4.5.2 참조)
+   - [ ] `backend/api/converters.py` — dataclass → Pydantic 변환 헬퍼 (pd.Timestamp → unix ms 등)
    - [ ] `backend/api/ohlcv.py` — GET /api/ohlcv
    - [ ] `backend/api/indicators.py`, `signals.py`, `trend.py`
    - [ ] `backend/api/portfolio.py` — POST /api/portfolio
    - [ ] `backend/api/ai.py` — POST /api/ai/explain
    - [ ] `backend/api/backtest.py` — POST /api/backtest
-   - [ ] `backend/api/market.py` — GET /api/market/snapshot
+   - [ ] `backend/api/market.py` — GET /api/market/snapshot (TopBar용, `core.market_snapshot.fetch_snapshot` 호출)
    - [ ] `backend/tests/test_api/*` — FastAPI TestClient 통합 테스트
    - [ ] OpenAPI docs 자동 생성 확인 (http://localhost:8000/docs)
 
@@ -1393,10 +1634,11 @@ C:/X/new/
 
 #### Frontend (단계 7~9, 약 1.5시간)
 
-7. **api.js 작성 (20분)** ✨ NEW
-   - [ ] `Tradingmode/api.js` — fetch 래퍼 (§4.5.5 참조)
-   - [ ] `index.html`에 `<script src="api.js?v=5"></script>` 추가 (data.js보다 먼저)
-   - [ ] 브라우저 콘솔에서 `await api.ohlcv({...})` 동작 확인
+7. **api.js 작성 + OpenAPI 동기화 (30분)** ✨ NEW
+   - [ ] `Tradingmode/api.js` — fetch 래퍼 (§4.5.5 참조, AbortController/timeout 포함)
+   - [ ] `Tradingmode/index.html`에 `<script>window.API_BASE_URL = 'http://localhost:8000'</script>` 추가 + `<script src="api.js?v=5"></script>` (data.js보다 먼저 로드)
+   - [ ] 브라우저 콘솔에서 `await api.health()` → `{status:"ok"}` 확인 (백엔드 가용성)
+   - [ ] **OpenAPI 동기화**: 백엔드 기동 후 `curl http://localhost:8000/openapi.json > Tradingmode/types.openapi.json` 으로 스냅샷 저장 → 프론트는 JSDoc `@typedef`로 수동 동기화 (v0.4 정책, v2에서 openapi-typescript 도입)
 
 8. **data.js → api.js 교체 (50분)**
    - [ ] `charts.jsx`: `instrument.candles` 출처를 합성 → `await api.ohlcv()` 결과로 교체
@@ -1404,17 +1646,28 @@ C:/X/new/
    - [ ] `charts.jsx`: 신호 마커는 `await api.signals()`, 추세는 `await api.trend()`
    - [ ] `signals-page.jsx`: AI 해설을 `window.claude` → `await api.aiExplain()` 교체
    - [ ] `portfolio-page.jsx`: MOCK_HOLDINGS는 그대로 시연용으로 유지하되, `await api.portfolio()` 결과 표시 옵션 추가
-   - [ ] `app.jsx`: TopBar 시세를 `await api.marketSnapshot()` 폴링(30초 간격)
-   - [ ] DataStatusBar: 실제 fetch 상태 반영 (loading/error/rate_limit)
+   - [ ] `app.jsx`: TopBar 시세를 `await api.marketSnapshot()` 폴링(30초 간격, visibility 기반 일시정지 — §4.5.6 패턴)
+   - [ ] DataStatusBar: 실제 fetch 상태 반영 (loading/error/rate_limit) — 매핑 표는 §6.3 참조
+   - [ ] **data.js 운명**: 합성 OHLCV/지표 함수는 `Tradingmode/demo-data.js`로 rename, `?demo=1` 쿼리 파라미터 시에만 로드 (백엔드 미가용 시 데모 모드). 실제 운영 모드는 api.js만 사용.
 
 9. **Frontend 검증 (20분)**
    - [ ] BTC/USDT 차트 + 지표 + 신호 실데이터 표시
    - [ ] 005930 동일
    - [ ] AI 해설 expander 클릭 → Groq 호출 → 결과 표시
    - [ ] 포트폴리오 페이지에서 holdings_sample.csv 업로드 → 결과 표시
+   - [ ] DataStatusBar: 잘못된 심볼 입력 시 `error` 상태 + 메시지 정상 표시
+   - [ ] AbortController: 종목 빠르게 전환 시 race condition 없이 마지막 요청만 반영 확인
 
 > **예상 총 시간**: ~5.5시간 (검증·디버깅 포함 ~7시간)
 > 백엔드 단계 4(Application)는 5(API) 작업과 병렬 가능 (테스트와 엔드포인트 동시 진행).
+
+#### 정적 호스팅 (개발/프로덕션)
+
+| 환경 | 호스팅 방식 | CORS_ORIGINS |
+|------|------------|--------------|
+| 개발 (v0.4) | `python -m http.server 5500 --directory Tradingmode` 또는 VS Code Live Server (5500) | `http://localhost:5500,http://127.0.0.1:5500` |
+| 개발 (대안) | FastAPI `StaticFiles`로 통합 서빙: `app.mount('/', StaticFiles(directory='../Tradingmode', html=True))` | `http://localhost:8000` (single-origin) |
+| 프로덕션 (v2) | Vite build → 정적 파일 → nginx/Caddy 또는 FastAPI StaticFiles | 도메인 화이트리스트 |
 
 ### 11.3 의존성 (`requirements.txt` 초안)
 
@@ -1505,3 +1758,4 @@ core/brokers/
 | 0.2 | 2026-04-29 | AI 신호 해석(Groq), 포트폴리오 분석(MVP), Broker 인터페이스(v3 placeholder) 추가. §12 Future Extensions 신설. | 900033@interojo.com |
 | 0.3 | 2026-04-29 | design-validator 후속 수정: 사이드바 4페이지 다이어그램, app.py 의존 정정, FxQuote/HoldingAnalysis FX 메타데이터, errors.py를 core/types/로 이동, IndicatorConfig EMA 정정, Stochastic 제거, SignalKind/SignalAction Enum 통일, bbands std=2.0, Strategy/BrokerProtocol 위치 명시, interpret_signals_batch sync 래퍼 명시, Signal.strength v0.2=1.0 고정 + v2 공식 명세, Phase 5 N/A 추가. | 900033@interojo.com |
 | 0.4 | 2026-04-30 | **아키텍처 피벗**: Streamlit → React SPA(`Tradingmode/`) + FastAPI 백엔드(`backend/`) 분리. §4.5 REST API 명세 신설(엔드포인트 9개 + Pydantic 스키마 + CORS + 에러 코드 + 프론트 fetch 패턴). §5 UI를 React 프로토타입 매핑으로 재작성. §9 Layer Structure에 API Boundary 추가. §11.1 폴더 구조 backend/ + Tradingmode/ 분리. §11.2 구현 순서를 백엔드 → API → 프론트 통합 9단계로 재편. | 900033@interojo.com |
+| 0.4.1 | 2026-04-30 | design-validator 재검증(78%) 후속 수정: §5.1 React TopBar/Watchlist/Tabs 와이어프레임 재작성, §5.2 User Flow를 uvicorn+http.server 기준 재작성, §9.4 죽은 Streamlit 매핑(app.py/pages/*) 제거, §10.5 Streamlit 잔존 정리, §10.3 BACKEND_/CORS_/API_BASE_URL 추가, §6.3 사용자 메시지를 FastAPI exception_handler + 프론트 ApiError 패턴으로 재작성, §4.5.4 에러 코드 ↔ 도메인 예외 매핑 표 추가, §4.5.5 api.js에 AbortController/timeout/race 처리, §4.5.6 폴링·캐싱 정책 신설, §4.5.2 응답 Pydantic 스키마 + dataclass 변환 매핑 표, §11.2 OpenAPI 동기화·정적 호스팅·data.js 운명·core.market_snapshot 추가, §5.3 백테스팅 위치(`charts.jsx` 내 패널) 명시. Plan §4.1 DoD를 백엔드/프론트 두 명령으로 분리, Plan §6.3 폴더 구조 끝 중복 제거, Plan §7.4 Pipeline note 갱신. 목표 90%+. | 900033@interojo.com |
