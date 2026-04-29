@@ -1,0 +1,9 @@
+market,symbol,quantity,avg_price,currency
+crypto,BTCUSDT,0.42,58400,USDT
+crypto,ETHUSDT,4.8,2780,USDT
+crypto,SOLUSDT,95,118,USDT
+kr_stock,005930,320,71200,KRW
+kr_stock,000660,42,162000,KRW
+kr_stock,035420,28,215000,KRW
+kr_stock,373220,8,445000,KRW
+kr_stock,247540,14,198000,KRW
