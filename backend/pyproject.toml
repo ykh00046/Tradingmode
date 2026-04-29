@@ -1,0 +1,43 @@
+[project]
+name = "trading-analysis-tool-backend"
+version = "0.4.1"
+description = "FastAPI backend for the Tradingmode analysis tool"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]   # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"core/types/schemas.py" = ["UP007"]   # allow Optional[X] alongside X | None
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict_optional = true
+allow_untyped_defs = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true   # pandas-ta, pykrx 등 stub 부족
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.3",
+    "black>=24.0",
+    "mypy>=1.9",
+]

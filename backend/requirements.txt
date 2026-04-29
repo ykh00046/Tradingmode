@@ -1,0 +1,30 @@
+# =============================================================================
+# Backend Production Dependencies
+# =============================================================================
+
+# Web framework
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+pydantic-settings>=2.1
+
+# Data & indicators
+pandas>=2.1
+numpy>=1.26
+pandas-ta>=0.3.14b
+pyarrow>=15.0
+
+# Market data adapters
+python-binance>=1.0.19
+pykrx>=1.0.45
+finance-datareader>=0.9.50
+
+# Backtesting
+backtesting>=0.3.3
+
+# AI
+groq>=0.4
+
+# Utilities
+python-dotenv>=1.0
+httpx>=0.26

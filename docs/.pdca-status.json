@@ -5,7 +5,7 @@
   "primaryFeature": "trading-analysis-tool",
   "features": {
     "trading-analysis-tool": {
-      "phase": "design",
+      "phase": "do",
       "level": "Dynamic",
       "createdAt": "2026-04-29",
       "documents": {
