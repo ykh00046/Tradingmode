@@ -53,8 +53,10 @@ project_version: 0.1.0
 - [ ] **포트폴리오 보유 종목 입력**: CSV 업로드 또는 수동(`{symbol, quantity, avg_price}`)
 - [ ] **포트폴리오 일괄 분석**: 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 표시
 - [ ] **Broker 어댑터 인터페이스 정의**(자동매매 v3 확장 지점 — 본 사이클은 시그니처만, 구현 X)
-- [ ] Streamlit 웹 대시보드: 종목 선택, 캔들 차트(plotly), 지표 오버레이, 신호 표시, 백테스트 결과 표시, 포트폴리오 페이지
-- [ ] 데이터 캐싱: 동일 요청 반복 호출 방지(parquet)
+- [ ] **React SPA 프론트엔드** (`Tradingmode/`): TopBar 시세 테이프, Watchlist 사이드바, Chart Analysis · Signals · Portfolio 페이지
+- [ ] **FastAPI 백엔드** (`backend/`): OHLCV / 지표 / 신호 / 추세 / 포트폴리오 / AI 해설 / 백테스팅 REST 엔드포인트
+- [ ] CORS 설정으로 프론트↔백엔드 통신
+- [ ] 데이터 캐싱: 동일 요청 반복 호출 방지(parquet, 백엔드)
 
 ### 2.2 Out of Scope
 
@@ -86,23 +88,28 @@ project_version: 0.1.0
 | FR-08 | RSI 강세/약세 다이버전스 감지 | Medium | Pending |
 | FR-09 | MACD 시그널 라인 교차 신호 감지 | Medium | Pending |
 | FR-10 | 백테스팅: 신호 기반 진입/청산, 누적수익률·MDD·승률·샤프지수 출력 | High | Pending |
-| FR-11 | Streamlit 대시보드 메인 화면: 종목/타임프레임 선택, 캔들 차트 + 지표 오버레이 | High | Pending |
-| FR-12 | 매매 신호 페이지: 신호 발생 시점 차트 표시 + 최근 신호 리스트 | High | Pending |
-| FR-13 | 백테스팅 페이지: 전략 선택 → 결과 차트 + 통계 테이블 | High | Pending |
-| FR-14 | Groq API(llama-3.3-70b-versatile)로 감지 신호의 자연어 해설 생성 | Medium | Pending |
+| FR-11 | **Chart Analysis 페이지**(React): 종목/타임프레임 선택, 캔들 차트 + 지표 오버레이, 줌/드로잉(추세선·피보나치) | High | Pending |
+| FR-12 | **Signals 페이지**(React): BUY/SELL 필터, 신호 리스트 + 차트 마커 + AI 해설 expander | High | Pending |
+| FR-13 | **백테스팅 영역**(React, Chart 페이지 또는 별도): 전략 선택 → 결과 차트 + 통계 테이블 | High | Pending |
+| FR-14 | Groq API(llama-3.3-70b-versatile)로 감지 신호의 자연어 해설 생성 (백엔드에서 호출, 키 노출 X) | Medium | Pending |
 | FR-15 | 보유 종목 입력: CSV 업로드 + 수동 입력(`symbol, quantity, avg_price`) | High | Pending |
-| FR-16 | 포트폴리오 페이지: 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 표시 | High | Pending |
+| FR-16 | **Portfolio 페이지**(React): 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 + treemap | High | Pending |
 | FR-17 | broker 어댑터 인터페이스 정의(주문 메서드 시그니처만, 실제 구현 X) | Low | Pending |
+| FR-18 | **FastAPI REST 엔드포인트**: `/api/ohlcv`, `/api/indicators`, `/api/signals`, `/api/trend`, `/api/portfolio`, `/api/ai/explain`, `/api/backtest` | High | Pending |
+| FR-19 | **TopBar 시세 테이프**: KOSPI/KOSDAQ/USD-KRW/BTC/DXY/VIX 실시간 (백엔드 `/api/market/snapshot` 폴링) | Medium | Pending |
+| FR-20 | **Watchlist 사이드바**: KR/CRYPTO 필터, 미니 스파크라인, 종목 클릭 → 메인 차트 동기화 | High | Pending |
+| FR-21 | **DataStatusBar**: OK / LOADING / RATE_LIMIT / ERROR 상태 표시 (프론트 로컬 상태) | Medium | Pending |
 
 ### 3.2 Non-Functional Requirements
 
 | Category | Criteria | Measurement Method |
 |----------|----------|-------------------|
-| Performance | 단일 종목·1년치 일봉 분석 < 2초 | 로컬 캐시 hit 기준, `time.perf_counter` 측정 |
-| Reliability | 데이터 수집 실패 시 명확한 에러 메시지 + 재시도 로직 | API 에러 핸들링 단위 테스트 |
-| Usability | 비개발자도 종목 코드 입력만으로 사용 가능 | Streamlit selectbox + autocomplete 제공 |
-| Compatibility | Windows 11 + Python 3.11+ 환경에서 동작 | 본 환경(C:\X\new) 기준 검증 |
+| Performance | 단일 종목·1년치 일봉 분석 < 2초 (백엔드 캐시 hit 기준) + 프론트 첫 페인트 < 1초 | `time.perf_counter` + Lighthouse |
+| Reliability | 데이터 수집 실패 시 명확한 에러 메시지 + 재시도 로직 | API 에러 핸들링 단위 테스트, DataStatusBar로 시각화 |
+| Usability | 비개발자도 Watchlist 클릭만으로 사용 가능 | 종목 추가 UI + 자동완성 |
+| Compatibility | Windows 11 + Python 3.11+ + 모던 브라우저 (Chrome/Edge 최신 2개 버전) | 본 환경(C:\X\new) 기준 검증 |
 | Legal | 공식 API 이용약관 준수, 무료 데이터만 사용 | Binance/pykrx 공식 API 외 미사용 |
+| Security | API 키는 백엔드만 보유, 프론트 노출 X | `.env` + `.gitignore`, CORS 화이트리스트 |
 
 ---
 
@@ -137,7 +144,11 @@ project_version: 0.1.0
 | Groq Rate Limit (free tier ~30 req/min) 초과 | Medium | Medium | 신호 변경 시점에만 호출, 디바운스, 결과 캐싱(`signal_kind+timestamp` 키) |
 | LLM 환각/잘못된 해석 | High | Medium | 프롬프트에 지표 수치 명시, low temperature, "투자 자문 아님" 면책 표시 |
 | 포트폴리오 종목 가격 데이터 시점 불일치(crypto 24/7 vs KR 장중) | Medium | Medium | 모든 종목 동일 기준 시점(전일 종가)으로 정규화, KRW/USD 환율 표기 |
-| Groq API 키 노출 위험 | High | Low | `.env` + `.gitignore`, `streamlit secrets`(배포 시) 사용 |
+| Groq API 키 노출 위험 | High | Low | **백엔드만 키 보유**, 프론트는 `/api/ai/explain` 호출만, `.env` + `.gitignore` |
+| CORS 정책 누락 시 통신 실패 | High | Medium | FastAPI `CORSMiddleware`로 `localhost:8000` 등 화이트리스트 명시 |
+| React CDN(unpkg) 가용성 의존 | Medium | Low | 프로덕션 시 정적 호스팅 또는 Vite 빌드로 전환 (v2) |
+| 프론트↔백엔드 스키마 불일치 | Medium | High | Pydantic 모델 → OpenAPI 스키마 → 프론트 타입 동기화 (수동 또는 openapi-typescript) |
+| Babel standalone 런타임 컴파일 비용 | Low | High | 개발 단계는 허용, 프로덕션은 Vite 빌드 권장 (v2) |
 
 ---
 
@@ -159,9 +170,12 @@ project_version: 0.1.0
 
 | Decision | Options | Selected | Rationale |
 |----------|---------|----------|-----------|
-| 언어/런타임 | Python 3.11 / 3.12 | **Python 3.11+** | pandas-ta·streamlit 안정 호환 |
-| UI Framework | Streamlit / Gradio / Dash | **Streamlit** | 사용자 선택, 빠른 프로토타이핑 |
-| 차트 라이브러리 | plotly / matplotlib / lightweight-charts | **plotly** | 인터랙티브 캔들·줌·툴팁 |
+| 백엔드 런타임 | Python 3.11 / 3.12 | **Python 3.11+** | pandas-ta·FastAPI 안정 호환 |
+| 백엔드 프레임워크 | FastAPI / Flask / Django | **FastAPI** | 자동 OpenAPI, Pydantic 통합, 비동기 지원 |
+| 백엔드 서버 | uvicorn / gunicorn / hypercorn | **uvicorn** | FastAPI 표준, 개발 친화 |
+| 프론트엔드 | React / Vue / Streamlit | **React 18 (CDN)** | 사용자 제공 프로토타입 채택, 빌드 도구 없이 시작 |
+| 프론트 빌드 (v2) | Vite / Next.js / CRA | **Vite (v2 전환)** | v0.4는 CDN+Babel standalone, 프로덕션은 Vite |
+| 차트 라이브러리 | plotly.js / lightweight-charts / 직접 SVG | **직접 SVG** (프로토타입) → **lightweight-charts**(v2) | 프로토타입은 SVG, 성능 필요 시 TradingView lightweight-charts |
 | 암호화폐 데이터 | python-binance / ccxt | **python-binance** | 단일 거래소 우선, ccxt는 v2에서 |
 | KR 주식 데이터 | pykrx / FinanceDataReader | **둘 다** | pykrx(거래소 데이터 정확), FDR(보조·시계열 보강) |
 | 지표 계산 | TA-Lib / pandas-ta / 직접 구현 | **pandas-ta** | Windows 설치 간편, 순수 Python |
@@ -177,33 +191,56 @@ project_version: 0.1.0
 ```
 Selected Level: Dynamic
 
-폴더 구조 (Python 적용):
+폴더 구조 (프론트/백엔드 분리):
 C:/X/new/
-├── app.py                     # Streamlit 진입점
-├── pages/                     # Streamlit 멀티페이지
-│   ├── 1_차트분석.py
-│   ├── 2_매매신호.py
-│   ├── 3_백테스팅.py
-│   └── 4_포트폴리오.py
-├── core/                      # 도메인 모듈 (services 역할)
-│   ├── data_loader.py         # 거래소/주식 어댑터 통합
-│   ├── adapters/
-│   │   ├── binance_adapter.py
-│   │   └── krx_adapter.py
-│   ├── indicators.py          # 기술적 지표
-│   ├── signals.py             # 매매 신호
-│   ├── trend.py               # 추세 판별
-│   ├── backtest.py            # 백테스팅 (단일 종목)
-│   ├── ai_interpreter.py      # Groq LLM 신호 해석
-│   ├── portfolio.py           # 포트폴리오 일괄 분석
-│   └── brokers/               # 자동매매 어댑터 (v3, 인터페이스만)
-│       └── base.py
-├── lib/                       # Infrastructure 유틸 (캐시, 로깅)
-│   ├── cache.py
-│   └── logger.py
-└── core/types/                # Domain 타입 (schemas, errors)
-    ├── schemas.py             # dataclass/Enum/Protocol
-    └── errors.py              # 커스텀 예외
+├── backend/                       # FastAPI + 도메인 모듈
+│   ├── main.py                    # FastAPI 진입점 (uvicorn 실행)
+│   ├── api/                       # REST 엔드포인트
+│   │   ├── ohlcv.py               # /api/ohlcv
+│   │   ├── indicators.py          # /api/indicators
+│   │   ├── signals.py             # /api/signals
+│   │   ├── trend.py               # /api/trend
+│   │   ├── portfolio.py           # /api/portfolio
+│   │   ├── backtest.py            # /api/backtest
+│   │   ├── ai.py                  # /api/ai/explain
+│   │   └── market.py              # /api/market/snapshot
+│   ├── core/                      # 도메인 모듈 (기존 설계 유지)
+│   │   ├── data_loader.py
+│   │   ├── adapters/
+│   │   │   ├── binance_adapter.py
+│   │   │   └── krx_adapter.py
+│   │   ├── indicators.py
+│   │   ├── signals.py
+│   │   ├── trend.py
+│   │   ├── backtest.py
+│   │   ├── ai_interpreter.py
+│   │   ├── portfolio.py
+│   │   ├── brokers/
+│   │   │   └── base.py
+│   │   └── types/
+│   │       ├── schemas.py         # dataclass/Enum/Protocol + Pydantic 모델
+│   │       └── errors.py
+│   ├── lib/
+│   │   ├── cache.py
+│   │   └── logger.py
+│   ├── tests/
+│   ├── pyproject.toml
+│   └── requirements.txt
+│
+├── Tradingmode/                   # React SPA (사용자 제공 프로토타입 진화)
+│   ├── index.html
+│   ├── app.jsx                    # 메인 + TopBar + Watchlist + 라우팅
+│   ├── charts.jsx                 # ChartPage + 캔들/지표/드로잉
+│   ├── signals-page.jsx           # SignalsPage + AI 해설
+│   ├── portfolio-page.jsx         # PortfolioPage
+│   ├── tweaks-panel.jsx           # 설정 패널
+│   ├── data.js                    # → 실데이터 fetch로 교체 (백엔드 호출)
+│   ├── api.js                     # ✨ NEW: fetch 래퍼 (/api/* 호출)
+│   ├── styles.css
+│   └── uploads/                   # CSV 업로드 임시 저장 (옵션)
+│
+├── docs/                          # PDCA 문서
+└── data/                          # parquet 캐시 (gitignore, 백엔드가 사용)
 
 # 모든 Python 패키지 폴더에 `__init__.py` 자동 생성 (생략 표기).
 ├── tests/
@@ -243,11 +280,15 @@ C:/X/new/
 
 | Variable | Purpose | Scope | To Be Created |
 |----------|---------|-------|:-------------:|
-| `BINANCE_API_KEY` | (선택) Rate limit 완화용 | Server | ☑ (옵션) |
-| `BINANCE_API_SECRET` | (선택) 위와 동일 | Server | ☑ (옵션) |
-| `GROQ_API_KEY` | AI 신호 해석용 Groq API 키 (free tier 가능, 미설정 시 AI 해설 비활성) | Server | ☑ |
-| `CACHE_DIR` | parquet 캐시 경로 | Server | ☑ (기본 `./data`) |
-| `LOG_LEVEL` | INFO/DEBUG/WARNING | Server | ☑ |
+| `BINANCE_API_KEY` | (선택) Rate limit 완화용 | Backend | ☑ (옵션) |
+| `BINANCE_API_SECRET` | (선택) 위와 동일 | Backend | ☑ (옵션) |
+| `GROQ_API_KEY` | AI 신호 해석용 Groq API 키 (free tier 가능, 미설정 시 AI 해설 비활성) | **Backend only** (프론트 노출 X) | ☑ |
+| `CACHE_DIR` | parquet 캐시 경로 | Backend | ☑ (기본 `./data`) |
+| `LOG_LEVEL` | INFO/DEBUG/WARNING | Backend | ☑ |
+| `BACKEND_HOST` | FastAPI 호스트 (기본 `127.0.0.1`) | Backend | ☑ |
+| `BACKEND_PORT` | FastAPI 포트 (기본 `8000`) | Backend | ☑ |
+| `CORS_ORIGINS` | CORS 허용 origin 리스트 (기본 `http://localhost:5500,http://127.0.0.1:5500`) | Backend | ☑ |
+| `API_BASE_URL` | 프론트가 호출할 백엔드 URL (기본 `http://localhost:8000`) | Frontend (런타임 주입) | ☑ |
 
 > Binance public market data는 인증 없이도 조회 가능하므로 API 키는 선택사항.
 > Groq API 키는 https://console.groq.com 에서 무료 발급. 미설정 시 AI 해설 기능만 비활성, 나머지 동작.
@@ -280,3 +321,4 @@ C:/X/new/
 | 0.1 | 2026-04-29 | 초안 작성 | 900033@interojo.com |
 | 0.2 | 2026-04-29 | AI 신호 해석(Groq), 포트폴리오 분석(MVP), 자동매매 어댑터 인터페이스(placeholder) 추가. 시중 OSS 대비 차별화 강화. | 900033@interojo.com |
 | 0.3 | 2026-04-29 | design-validator 검증(86% → 목표 90%+) 후속 수정: Stochastic 명세 정합화, EMA(12/26)는 MACD 내부용 명시, errors.py를 core/types/로 이동, types/ 경로 통일, Phase 5 Pipeline N/A 명시. | 900033@interojo.com |
+| 0.4 | 2026-04-30 | **아키텍처 피벗**: Streamlit 단일 스택 → React SPA(`Tradingmode/`) + FastAPI 백엔드(`backend/`) 분리. 사용자 제공 React 프로토타입을 정식 프론트로 채택. REST API 엔드포인트 정의(FR-18~21), TopBar 시세 테이프·Watchlist·DataStatusBar 추가. CORS, API 키 백엔드 보호, OpenAPI 스키마 동기화 리스크 신규. | 900033@interojo.com |

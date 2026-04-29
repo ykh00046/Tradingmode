@@ -24,15 +24,26 @@
 - 🤖 **AI 자연어 해설** — 단순 신호 출력이 아닌 "왜 이 신호가 발생했고 무엇을 봐야 하는지" 한국어 설명
 - 💼 **포트폴리오 단위 한눈에 보기** — 보유 종목의 추세·신호·손익을 한 화면 집계
 
+## 아키텍처
+
+- **Frontend** (`Tradingmode/`) — React 18 SPA (CDN 기반, 빌드 도구 없음)
+- **Backend** (`backend/`) — FastAPI + Python 도메인 모듈
+- **통신** — REST/JSON, CORS
+
 ## 기술 스택
 
-- Python 3.11+
-- Streamlit, plotly
+**Backend (Python 3.11+)**
+- FastAPI, uvicorn, Pydantic
 - pandas, pandas-ta
 - python-binance, pykrx, FinanceDataReader
 - backtesting.py
-- groq (Groq API 클라이언트)
+- groq (Groq API 클라이언트, 백엔드만 보유)
 - pyarrow (parquet 캐시)
+
+**Frontend (브라우저)**
+- React 18 (UMD via unpkg)
+- @babel/standalone (런타임 JSX 컴파일)
+- 직접 SVG 차트 (v2에서 lightweight-charts 검토)
 
 ## 문서
 
@@ -45,13 +56,24 @@
 
 ## 실행 (구현 후)
 
+**Backend**
 ```bash
+cd backend
 pip install -r requirements.txt
-cp .env.example .env  # GROQ_API_KEY 입력 (https://console.groq.com 에서 무료 발급, 선택사항)
-streamlit run app.py
+cp ../.env.example ../.env  # GROQ_API_KEY 입력 (https://console.groq.com 무료 발급)
+uvicorn main:app --reload --port 8000
+```
+
+**Frontend**
+```bash
+# Tradingmode/ 를 정적 서버로 호스팅 (예: VS Code Live Server, Python http.server 등)
+cd Tradingmode
+python -m http.server 5500
+# 브라우저에서 http://localhost:5500 접속
 ```
 
 > Groq API 키 미설정 시 AI 해설 기능만 비활성화되고 나머지는 정상 동작합니다.
+> 백엔드 OpenAPI 문서: http://localhost:8000/docs
 
 ## License
 

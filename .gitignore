@@ -30,6 +30,16 @@ data/
 *.swp
 *.swo
 
+# Node (v2에서 Vite 도입 시 대비)
+node_modules/
+.pnpm-store/
+dist/
+*.log
+
+# Frontend uploads (CSV 임시 저장)
+Tradingmode/uploads/*
+!Tradingmode/uploads/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db

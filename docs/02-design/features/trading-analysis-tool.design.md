@@ -38,12 +38,14 @@ project_version: 0.1.0
 ### 1.1 Design Goals
 
 - **모듈성**: 데이터 소스(거래소/주식)와 broker(주문)를 어댑터 패턴으로 추상화 → 신규 소스/거래소 추가가 코어 변경 없이 가능
+- **프론트/백엔드 분리**: React SPA(`Tradingmode/`) ↔ FastAPI(`backend/`)를 REST로 통신, 도메인 로직은 백엔드에 집중
 - **재현성**: 동일 입력에 대해 동일 신호·백테스트 결과가 나오도록 결정론적 로직 작성 (LLM 호출 제외, LLM은 별도 캐시)
-- **성능**: parquet 캐시로 동일 요청 재호출 방지, 단일 종목·1년치 분석 < 2초 (캐시 hit 기준)
-- **검증가능성**: 모든 결정론적 로직(지표·신호·추세·포트폴리오 집계)은 단위 테스트 가능
+- **성능**: parquet 캐시로 동일 요청 재호출 방지, 단일 종목·1년치 분석 < 2초 (캐시 hit 기준), 프론트 첫 페인트 < 1초
+- **검증가능성**: 모든 결정론적 로직(지표·신호·추세·포트폴리오 집계)은 단위 테스트 가능, OpenAPI 스키마로 프론트↔백엔드 계약 검증
 - **확장성**: 백테스팅 전략, AI 프로바이더, broker를 모두 인터페이스/Protocol로 정의해 교체 가능
 - **AI 보조성**: AI는 *보조 해설*만, 최종 매매 판단은 사용자 — 환각 방지를 위해 지표 수치 명시 + low temperature
 - **포트폴리오 일괄성**: 단일 종목 분석을 그대로 N개로 확장하여 보유 자산 전체를 한 화면에서 파악
+- **보안 우선**: API 키(Groq, Binance)는 백엔드만 보유, 프론트 코드/번들에 절대 노출 X
 
 ### 1.2 Design Principles
 
@@ -60,31 +62,46 @@ project_version: 0.1.0
 ### 2.1 Component Diagram
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                Presentation (Streamlit)                      │
-│  app.py  / pages/1_차트분석.py  / 2_매매신호.py               │
-│           / 3_백테스팅.py        / 4_포트폴리오.py             │
-└────────────────────────┬─────────────────────────────────────┘
-                         │ uses
-                         ▼
-┌──────────────────────────────────────────────────────────────┐
-│                  Application (core/)                         │
-│  data_loader.py  backtest.py  portfolio.py  ai_interpreter.py│
-└──┬───────────────┬─────────────────────────────────┬─────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│              Frontend (Tradingmode/, React 18 SPA)               │
+│  index.html → app.jsx (TopBar + Watchlist + Router)              │
+│  ├─ charts.jsx (ChartPage)                                       │
+│  ├─ signals-page.jsx (SignalsPage + AI 해설)                     │
+│  ├─ portfolio-page.jsx (PortfolioPage)                           │
+│  └─ api.js (fetch 래퍼 — 모든 백엔드 호출 단일 진입점)            │
+└──────────────────────────────┬───────────────────────────────────┘
+                               │ HTTP/JSON (REST + CORS)
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│           Backend API (backend/, FastAPI + uvicorn)              │
+│  main.py (FastAPI app + CORSMiddleware)                          │
+│  api/ohlcv.py · indicators.py · signals.py · trend.py            │
+│  api/portfolio.py · backtest.py · ai.py · market.py              │
+│  Pydantic 모델 ↔ core.types.schemas (자동 변환)                   │
+└──┬───────────────┬─────────────────────────────────┬─────────────┘
    │ uses          │ uses                            │ uses
+   ▼               ▼                                 ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              Backend Application (backend/core/)                 │
+│  data_loader.py  backtest.py  portfolio.py  ai_interpreter.py    │
+└──┬───────────────┬─────────────────────────────────┬─────────────┘
+   │               │                                 │
    ▼               ▼                                 ▼
 ┌──────────────┐  ┌─────────────────────────┐  ┌───────────────────┐
 │ Domain       │  │ Infrastructure          │  │ External APIs     │
 │ indicators   │  │ adapters/binance, krx   │  │ Binance / pykrx   │
-│ signals      │  │ brokers/base (v3 IF만)  │  │ Groq LLM API      │
-│ trend        │  │ lib/cache, logger,errors│  │                   │
+│ signals      │  │ brokers/base (v3 IF)    │  │ Groq LLM API      │
+│ trend        │  │ lib/cache, logger       │  │ FX (FDR)          │
 │ types/schemas│  │                         │  │                   │
+│ types/errors │  │                         │  │                   │
 └──────────────┘  └─────────────────────────┘  └───────────────────┘
 ```
 
-**범례**: `ai_interpreter`는 Application 레이어(외부 LLM 호출 + 도메인 데이터 가공),
-`portfolio`는 Application 레이어(여러 단일 종목 분석을 집계),
-`brokers/base`는 자동매매 v3을 위한 Protocol/Interface 정의만 (구현 X).
+**범례**:
+- 프론트는 도메인 로직 0%, **백엔드 호출과 시각화·인터랙션만** 담당.
+- `api/*.py`는 thin controller — 입력 검증 → core 호출 → Pydantic 응답 변환.
+- `core.ai_interpreter`는 백엔드만 소유(Groq 키 보호).
+- `Tradingmode/data.js`의 합성 데이터 함수는 v0.4에서 `api.js` 호출로 점진 교체.
 
 ### 2.2 Data Flow
 
@@ -126,21 +143,42 @@ DataFrame (OHLCV)
 
 ### 2.3 Dependencies
 
+**Frontend (`Tradingmode/`)**
+
 | Component | Depends On | Purpose |
 |-----------|-----------|---------|
-| `app.py` | (없음) | 랜딩 페이지 — `st.title` + 안내, core 모듈 직접 호출 X |
-| `pages/*.py` | core.* | 각 분석 페이지 |
+| `index.html` | React 18 UMD, Babel standalone (CDN) | 진입 |
+| `app.jsx` | api.js, charts.jsx, signals-page.jsx, portfolio-page.jsx | TopBar + Watchlist + 라우팅 |
+| `charts.jsx` | api.js | OHLCV/지표 fetch + 캔들 렌더 + 드로잉 |
+| `signals-page.jsx` | api.js | 신호 fetch + AI 해설 fetch (POST `/api/ai/explain`) |
+| `portfolio-page.jsx` | api.js | 포트폴리오 fetch + treemap |
+| `api.js` (NEW) | fetch (browser native) | `API_BASE_URL` 기반 fetch 래퍼, 에러 정규화, 캐시 |
+| `data.js` | (전환 예정) | v0.4: 합성 데이터 → api.js 호출로 점진 교체 |
+
+**Backend (`backend/`)**
+
+| Component | Depends On | Purpose |
+|-----------|-----------|---------|
+| `main.py` | fastapi, uvicorn, CORSMiddleware | 서버 진입 + 미들웨어 |
+| `api/ohlcv.py` | core.data_loader | GET /api/ohlcv |
+| `api/indicators.py` | core.indicators | GET /api/indicators |
+| `api/signals.py` | core.signals | GET /api/signals |
+| `api/trend.py` | core.trend | GET /api/trend |
+| `api/portfolio.py` | core.portfolio | POST /api/portfolio |
+| `api/backtest.py` | core.backtest | POST /api/backtest |
+| `api/ai.py` | core.ai_interpreter | POST /api/ai/explain |
+| `api/market.py` | core.data_loader | GET /api/market/snapshot (TopBar 시세 테이프) |
 | `core.data_loader` | core.adapters.*, lib.cache | 데이터 통합 진입점 |
 | `core.indicators` | pandas-ta, pandas | 지표 계산 |
-| `core.signals` | core.indicators | 신호는 지표 위에서 동작 |
-| `core.trend` | core.indicators | 추세는 지표(ADX, MA) 기반 |
-| `core.backtest` | backtesting.py, core.signals | 신호 입력으로 백테스트 |
+| `core.signals` | core.indicators | 신호 |
+| `core.trend` | core.indicators | 추세 |
+| `core.backtest` | backtesting.py, core.signals | 백테스트 |
 | `core.adapters.binance_adapter` | python-binance | Binance Spot API |
 | `core.adapters.krx_adapter` | pykrx, FinanceDataReader | KR 주식 데이터 |
-| `core.ai_interpreter` | groq, core.types | LLM 신호 해석 |
+| `core.ai_interpreter` | groq, core.types | LLM 신호 해석 (백엔드만) |
 | `core.portfolio` | core.data_loader, core.signals, core.trend, core.indicators | 보유 종목 일괄 분석 |
 | `core.brokers.base` | core.types (인터페이스만) | v3 자동매매 확장 지점 (구현 X) |
-| `lib.cache` | pyarrow, pathlib | parquet 캐시 (OHLCV + AI 응답 둘 다) |
+| `lib.cache` | pyarrow, pathlib | parquet 캐시 |
 
 ---
 
@@ -362,6 +400,12 @@ data/kr_stock/005930/1d/2024-01-01_2026-04-29.parquet
 DataFrame 스키마는 §3.1 OHLCV와 동일.
 
 ---
+
+## 4. API Specification
+
+> 본 섹션은 두 종류의 API를 다룬다:
+> - **§4.1~4.3**: 백엔드 내부 모듈 API (Python 함수 시그니처)
+> - **§4.5**: REST API (FastAPI 엔드포인트, 프론트↔백엔드 계약)
 
 ## 4. API Specification (내부 모듈 API)
 
@@ -656,9 +700,195 @@ bear_cross = (prev_macd >= prev_sig) & (curr_macd < curr_sig)  # action=sell
 
 ---
 
+## 4.5 REST API Specification (FastAPI 엔드포인트)
+
+> 모든 응답은 JSON. 에러는 `{"error": {"code": "...", "message": "...", "details": {}}}` 표준 포맷.
+> 모든 엔드포인트 prefix: `/api`
+
+### 4.5.1 엔드포인트 목록
+
+| Method | Path | 입력 | 출력 | core 호출 |
+|--------|------|------|------|-----------|
+| GET | `/api/health` | — | `{status:"ok", version:"0.4.0"}` | — |
+| GET | `/api/ohlcv` | query: `market`, `symbol`, `interval`, `start`, `end` | `OHLCVResponse` | `data_loader.fetch` |
+| GET | `/api/indicators` | query: 위 + `config` (JSON) | `IndicatorsResponse` | `data_loader.fetch` + `indicators.compute` |
+| GET | `/api/signals` | query: 위 OHLCV 입력 | `SignalsResponse` | `signals.detect_all` |
+| GET | `/api/trend` | query: 위 OHLCV 입력 | `TrendResponse` | `trend.classify` |
+| POST | `/api/ai/explain` | body: `AIExplainRequest` | `AICommentary` | `ai_interpreter.interpret_signal` |
+| POST | `/api/portfolio` | body: `PortfolioRequest` | `PortfolioAnalysis` | `portfolio.analyze` |
+| POST | `/api/backtest` | body: `BacktestRequest` | `BacktestResult` | `backtest.run` |
+| GET | `/api/market/snapshot` | — | `MarketSnapshot` (KOSPI/KOSDAQ/USD-KRW/BTC/DXY/VIX) | `data_loader.fetch` (배치) |
+
+### 4.5.2 주요 요청/응답 스키마 (Pydantic)
+
+```python
+# backend/api/schemas.py — Pydantic 모델 (core.types와 1:1 매핑)
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class OHLCVResponse(BaseModel):
+    market: Literal["crypto", "kr_stock"]
+    symbol: str
+    interval: Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+    candles: list[dict]   # [{t, o, h, l, c, v}, ...]   t = unix ms
+    cached: bool          # 캐시 hit 여부
+
+class IndicatorsResponse(OHLCVResponse):
+    indicators: dict      # {"SMA_20": [...], "RSI_14": [...], "MACD_12_26_9": [...], ...}
+
+class SignalsResponse(BaseModel):
+    market: str
+    symbol: str
+    signals: list[dict]   # [{t, kind, action, price, strength, detail}, ...]
+
+class TrendResponse(BaseModel):
+    market: str
+    symbol: str
+    trend: Literal["uptrend", "downtrend", "sideways"]
+    adx: float
+    ma_alignment: dict    # {"sma_20": ..., "sma_60": ..., "sma_120": ...}
+
+class AIExplainRequest(BaseModel):
+    signal_kind: str
+    timestamp: int        # unix ms
+    symbol: str
+    market: str
+    indicators_at_signal: dict  # {"rsi": 56.3, "macd": 12.5, "ma_short": 67200, ...}
+    price: float
+
+class PortfolioRequest(BaseModel):
+    holdings: list[dict]  # [{market, symbol, quantity, avg_price, currency}, ...]
+    base_currency: Literal["KRW", "USD"] = "KRW"
+    as_of: int | None = None  # unix ms, None = 최신
+
+class BacktestRequest(BaseModel):
+    market: str
+    symbol: str
+    interval: str
+    start: int
+    end: int
+    strategy: Literal["ma_cross"] = "ma_cross"
+    cash: float = 10_000_000
+    commission: float = 0.0005
+
+class MarketSnapshot(BaseModel):
+    kospi: dict           # {value, change_pct}
+    kosdaq: dict
+    usd_krw: dict
+    btc: dict
+    dxy: dict
+    vix: dict
+    timestamp: int
+```
+
+### 4.5.3 CORS 정책
+
+```python
+# backend/main.py
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5500").split(","),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+```
+
+### 4.5.4 에러 응답 표준
+
+```json
+{
+  "error": {
+    "code": "DATA_SOURCE_ERROR",
+    "message": "Binance API timeout after 3 retries",
+    "details": {
+      "endpoint": "/api/v3/klines",
+      "symbol": "BTCUSDT"
+    }
+  }
+}
+```
+
+| HTTP | code | 발생 시점 |
+|------|------|----------|
+| 400 | `INVALID_INPUT` | 입력 검증 실패 |
+| 404 | `INVALID_SYMBOL` | 심볼 미존재 |
+| 422 | `INSUFFICIENT_DATA` | 지표 계산 데이터 부족 |
+| 429 | `RATE_LIMIT_EXCEEDED` | 외부 API rate limit (Binance 1200/min) |
+| 502 | `DATA_SOURCE_ERROR` | 외부 API 호출 실패 |
+| 503 | `AI_SERVICE_ERROR` | Groq API 실패 (AI 해설 호출 시) |
+| 500 | `INTERNAL_ERROR` | 그 외 |
+
+### 4.5.5 프론트 fetch 패턴 (`Tradingmode/api.js`)
+
+```javascript
+// api.js — 모든 백엔드 호출의 단일 진입점
+const API_BASE = window.API_BASE_URL || 'http://localhost:8000';
+
+async function apiGet(path, params = {}) {
+  const url = new URL(API_BASE + path);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body?.error?.code || 'UNKNOWN', body?.error?.message || res.statusText, res.status);
+  }
+  return res.json();
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { /* same error handling */ }
+  return res.json();
+}
+
+class ApiError extends Error {
+  constructor(code, message, status) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+window.api = {
+  ohlcv:    (params)  => apiGet('/api/ohlcv', params),
+  indicators: (params) => apiGet('/api/indicators', params),
+  signals:  (params)  => apiGet('/api/signals', params),
+  trend:    (params)  => apiGet('/api/trend', params),
+  marketSnapshot: ()  => apiGet('/api/market/snapshot'),
+  aiExplain: (body)   => apiPost('/api/ai/explain', body),
+  portfolio: (body)   => apiPost('/api/portfolio', body),
+  backtest: (body)    => apiPost('/api/backtest', body),
+};
+```
+
+---
+
 ## 5. UI/UX Design
 
-> **방침**: Streamlit 기본 테마 사용. 별도 브랜드 디자인 적용 안 함. 기능 우선.
+> **방침**: 사용자 제공 React 프로토타입(`Tradingmode/`)을 정식 프론트엔드로 채택.
+> 기존 디자인(다크 테마, OKLCH 색상, JetBrains Mono 모노스페이스, TRADINGMODE.LAB 브랜딩) 유지.
+> v0.4 작업은 합성 데이터(`data.js`) → 백엔드 fetch(`api.js`) 점진 교체.
+
+### 5.0 프론트엔드 파일 ↔ 기능 매핑
+
+| File | 책임 | 백엔드 호출 |
+|------|------|------------|
+| `index.html` | 진입점, React/Babel CDN 로드, 스크립트 순서 정의 | — |
+| `app.jsx` | 앱 셸: TopBar, Watchlist, 탭 라우팅, 전역 상태 | `api.marketSnapshot()` (TopBar 폴링) |
+| `charts.jsx` | ChartPage — 캔들/지표 오버레이, 줌/팬, 드로잉(추세선·피보) | `api.ohlcv`, `api.indicators`, `api.signals`, `api.trend` |
+| `signals-page.jsx` | SignalsPage — 신호 리스트, 필터, AI 해설 expander | `api.signals` (universe 전체), `api.aiExplain` (클릭 시) |
+| `portfolio-page.jsx` | PortfolioPage — 보유 종목 테이블, treemap, 성과 차트 | `api.portfolio` (POST holdings) |
+| `tweaks-panel.jsx` | 색상·임계값·표시 옵션 조절 패널 (개발용) | — |
+| `data.js` | (전환 중) 합성 OHLCV 생성기 — v0.4 후반에 `api.js` 호출로 대체 | — |
+| `api.js` ✨ NEW | 모든 백엔드 fetch 단일 진입점, 에러 정규화 | 자체 |
+| `styles.css` | 다크 테마, OKLCH 색상 토큰, 레이아웃 | — |
 
 ### 5.1 화면 구조
 
@@ -700,37 +930,38 @@ bear_cross = (prev_macd >= prev_sig) & (curr_macd < curr_sig)  # action=sell
     └─→ [포트폴리오] → CSV 업로드/수동 입력 → 보유 종목 일괄 분석 + 추세 분포
 ```
 
-### 5.3 Streamlit 페이지 컴포넌트
+### 5.3 React 페이지 컴포넌트
 
-| Page | 핵심 위젯 | core 모듈 호출 |
-|------|----------|---------------|
-| `app.py` | `st.title`, 안내 메시지, 사이드바 자동 생성 | 없음 |
-| `pages/1_차트분석.py` | selectbox(market/symbol/interval/period), plotly Candlestick, 추세 metric | `data_loader.fetch`, `indicators.compute`, `trend.classify` |
-| `pages/2_매매신호.py` | 위 입력 + signal 마커 + DataFrame 테이블 + **AI 해설 expander** (각 신호 하단에 LLM 생성 해설) | `signals.detect_all`, `ai_interpreter.interpret_signals_batch` |
-| `pages/3_백테스팅.py` | 전략 selectbox, slider(cash/commission), equity curve, trade log | `backtest.run` |
-| `pages/4_포트폴리오.py` | CSV 업로드 + 수동 입력 폼, 보유 종목 테이블(추세/신호/손익/비중), 추세 분포 도넛 차트, 종목 클릭 시 상세 | `portfolio.load_holdings_from_csv`, `portfolio.analyze` |
+| Page | 핵심 컴포넌트 | API 호출 |
+|------|--------------|---------|
+| `app.jsx` | `TopBar`(시세 테이프), `Watchlist`(KR/CRYPTO 필터, 미니 스파크), `DataStatusBar`, 탭 라우팅 | `api.marketSnapshot()` |
+| `charts.jsx` (ChartPage) | 캔들 차트(SVG), MA 오버레이, RSI/MACD 서브차트, 드로잉 도구(trend/fib), 줌 프리셋(1M/3M/6M/1Y) | `api.ohlcv`, `api.indicators`, `api.trend`, `api.signals` |
+| `signals-page.jsx` (SignalsPage) | BUY/SELL 필터, 시장 필터, recency 슬라이더, 신호 리스트, **AI 해설 expander** | `api.signals` (universe 전체), `api.aiExplain` |
+| `portfolio-page.jsx` (PortfolioPage) | CSV 업로드, 보유 테이블(추세·손익·비중), treemap, 성과 차트(1M/3M/6M/1Y/ALL) | `api.portfolio` |
 
 ### 5.4 포트폴리오 페이지 레이아웃
 
+> 실제 구현은 `Tradingmode/portfolio-page.jsx` 참조. 아래는 와이어프레임.
+
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ 4. 포트폴리오                                              │
+│ Portfolio                                                  │
 ├────────────────────────────────────────────────────────────┤
-│ [📁 CSV 업로드] [+ 수동 추가]   기준통화: [KRW ▼]          │
+│ [📁 CSV 업로드] [+ 수동 추가]   기준통화: [KRW ▼] 기간: [3M ▼] │
 ├────────────────────────────────────────────────────────────┤
-│ 평가금액: ₩12,340,000   손익: +₩340,000 (+2.83%)          │
-│ 추세 분포: 🟢 상승 3 / 🔴 하락 1 / ⚪ 횡보 2              │
+│ 평가금액: ₩142.3M   손익: +₩8.4M (+6.27%)  일변동: +0.42%   │
+│ 추세 분포: 🟢 상승 5 / 🔴 하락 2 / ⚪ 횡보 1               │
 ├────────────────────────────────────────────────────────────┤
-│ 종목   │ 추세 │ 평가금액 │ 손익(%)  │ 비중 │ 최근신호      │
-│ BTCUSDT│ 🟢   │ ₩4.5M   │ +5.2%   │ 36% │ 골든크로스    │
-│ 005930 │ ⚪   │ ₩3.2M   │ -1.1%   │ 26% │ -            │
+│ [Treemap — 비중 시각화]      [성과 곡선 — 기간별]           │
+├────────────────────────────────────────────────────────────┤
+│ 종목     │ 추세 │ 평가금액 │ 손익(%)  │ 비중 │ 최근신호    │
+│ BTC/USDT │ 🟢  │ ₩42.5M  │ +18.2%  │ 30% │ 골든크로스   │
+│ 005930   │ ⚪  │ ₩28.4M  │ -1.1%   │ 20% │ -          │
 │ ...                                                        │
-├────────────────────────────────────────────────────────────┤
-│ [선택 종목 상세 차트 - 페이지1과 동일]                     │
 └────────────────────────────────────────────────────────────┘
 ```
 
-### 5.5 AI 해설 UI (매매신호 페이지 내)
+### 5.5 AI 해설 UI (Signals 페이지 내)
 
 ```
 🎯 [골든크로스] 2026-04-22 ₩68,500
@@ -742,6 +973,20 @@ bear_cross = (prev_macd >= prev_sig) & (curr_macd < curr_sig)  # action=sell
             아니므로 추가 상승 여력이 있어 보입니다. 다만...
        신뢰도: medium  |  ⚠️ 본 해설은 참고용, 투자 자문 아님
 ```
+
+**프론트 호출 흐름**:
+```
+사용자 expander 클릭
+  → signals-page.jsx: api.aiExplain({signal_kind, timestamp, symbol, indicators_at_signal})
+  → POST /api/ai/explain
+  → backend/api/ai.py: 입력 검증 + 캐시 키 조회
+  → core.ai_interpreter.interpret_signal(signal, df_window)
+  → Groq SDK 호출 (백엔드만, 키 보호)
+  → AICommentary 반환 (캐시 저장)
+  → 프론트 expander에 렌더 (loading/ready/error 상태)
+```
+
+> **캐시**: `(symbol, signal_kind, timestamp, model)` 키로 백엔드에서 영구 캐시 → 동일 신호 재해설 시 LLM 호출 0회.
 
 ---
 
@@ -878,31 +1123,37 @@ except DataSourceError as e:
 
 | Layer | Responsibility | Location |
 |-------|---------------|----------|
-| **Presentation** | Streamlit 페이지, plotly 차트 렌더 | `app.py`, `pages/` |
-| **Application** | 분석 오케스트레이션, 비즈니스 로직 | `core/data_loader.py`, `core/backtest.py` |
-| **Domain** | 순수 도메인 함수, 타입 정의 | `core/indicators.py`, `core/signals.py`, `core/trend.py`, `core/types/schemas.py` |
-| **Infrastructure** | 외부 API, 캐시, 로깅 | `core/adapters/`, `lib/cache.py`, `lib/logger.py` |
+| **Frontend** | UI 렌더, 사용자 인터랙션, 백엔드 호출, 시각화 (도메인 로직 0%) | `Tradingmode/` |
+| **API Boundary** | HTTP 입력 검증, Pydantic ↔ dataclass 변환, 에러 매핑 | `backend/api/` |
+| **Application** | 분석 오케스트레이션, 비즈니스 로직 | `backend/core/data_loader.py`, `backend/core/backtest.py`, `portfolio.py`, `ai_interpreter.py` |
+| **Domain** | 순수 도메인 함수, 타입 정의 | `backend/core/indicators.py`, `signals.py`, `trend.py`, `types/schemas.py`, `types/errors.py` |
+| **Infrastructure** | 외부 API, 캐시, 로깅 | `backend/core/adapters/`, `backend/core/brokers/`, `backend/lib/` |
 
 ### 9.2 Dependency Rules
 
 ```
-Presentation → Application → Domain ← Infrastructure
-                    │
-                    └→ Infrastructure
+Frontend ──HTTP/JSON──→ API Boundary → Application → Domain ← Infrastructure
+                                            │
+                                            └→ Infrastructure
+
+(Frontend은 백엔드 외부 — Python 코드 import 불가)
 ```
 
-- Streamlit 페이지는 core/* 만 import (lib/* 직접 import 금지)
-- core.indicators / core.signals / core.trend는 외부 의존성 없음 (pandas-ta는 Domain에 허용 — pandas 확장)
-- core.adapters는 core.types만 import 가능
+- 프론트는 **`api.js`만을 통해** 백엔드 호출 (직접 fetch 사용 X)
+- `backend/api/*.py`는 **thin controller**: 검증 → core 호출 → 변환만, 비즈니스 로직 X
+- `backend/core/indicators / signals / trend`는 외부 의존성 없음 (pandas-ta는 Domain에 허용)
+- `backend/core/adapters`는 `core.types`만 import 가능
 
 ### 9.3 File Import Rules
 
 | From | Can Import | Cannot Import |
 |------|-----------|---------------|
-| `pages/*` | `core.*` | `lib.*` 직접 |
-| `core.data_loader` (Application) | `core.adapters.*`, `core.types.*`, `lib.cache` | `pages.*` |
-| `core.indicators/signals/trend` (Domain) | `pandas`, `pandas-ta`, `core.types.*` | `core.adapters.*`, `lib.*`, `pages.*` |
-| `core.adapters.*` (Infra) | `core.types.*`, 외부 라이브러리 | `core.indicators`, `pages.*` |
+| `Tradingmode/*.jsx` | `Tradingmode/api.js`, React | 백엔드 Python 직접 (HTTP만) |
+| `backend/api/*` | `backend/core.*`, `backend/lib.*` (제한적), Pydantic | 외부 라이브러리 직접 (core 경유) |
+| `backend/core/data_loader` (Application) | `core.adapters.*`, `core.types.*`, `lib.cache` | `backend/api/*` |
+| `backend/core/indicators/signals/trend` (Domain) | `pandas`, `pandas-ta`, `core.types.*` | `core.adapters.*`, `lib.*`, `api/*` |
+| `backend/core/adapters/*` (Infra) | `core.types.*`, 외부 라이브러리 | `core.indicators`, `api/*` |
+| `backend/core/ai_interpreter` (Application) | `core.types.*`, `lib.cache`, `groq` | `api/*`, 도메인 함수에 강한 결합 X |
 
 ### 9.4 모듈별 레이어 매핑
 
@@ -912,21 +1163,28 @@ Presentation → Application → Domain ← Infrastructure
 | `pages/1_차트분석.py` | Presentation | `C:/X/new/pages/` |
 | `pages/2_매매신호.py` | Presentation | `C:/X/new/pages/` |
 | `pages/3_백테스팅.py` | Presentation | `C:/X/new/pages/` |
-| `core/data_loader.py` | Application | `C:/X/new/core/` |
-| `core/backtest.py` | Application | `C:/X/new/core/` |
-| `core/portfolio.py` | Application | `C:/X/new/core/` |
-| `core/ai_interpreter.py` | Application | `C:/X/new/core/` |
-| `core/indicators.py` | Domain | `C:/X/new/core/` |
-| `core/signals.py` | Domain | `C:/X/new/core/` |
-| `core/trend.py` | Domain | `C:/X/new/core/` |
-| `core/types/schemas.py` | Domain | `C:/X/new/core/types/` |
-| `core/adapters/binance_adapter.py` | Infrastructure | `C:/X/new/core/adapters/` |
-| `core/adapters/krx_adapter.py` | Infrastructure | `C:/X/new/core/adapters/` |
-| `core/brokers/base.py` | Infrastructure (인터페이스만) | `C:/X/new/core/brokers/` |
-| `lib/cache.py` | Infrastructure | `C:/X/new/lib/` |
-| `lib/logger.py` | Infrastructure | `C:/X/new/lib/` |
-| `core/types/errors.py` | Domain (cross-cut, pages도 직접 import 허용) | `C:/X/new/core/types/` |
-| `pages/4_포트폴리오.py` | Presentation | `C:/X/new/pages/` |
+| `Tradingmode/index.html` | Frontend | `C:/X/new/Tradingmode/` |
+| `Tradingmode/app.jsx` | Frontend | `C:/X/new/Tradingmode/` |
+| `Tradingmode/charts.jsx` | Frontend | `C:/X/new/Tradingmode/` |
+| `Tradingmode/signals-page.jsx` | Frontend | `C:/X/new/Tradingmode/` |
+| `Tradingmode/portfolio-page.jsx` | Frontend | `C:/X/new/Tradingmode/` |
+| `Tradingmode/api.js` ✨ | Frontend (백엔드 fetch 단일 진입점) | `C:/X/new/Tradingmode/` |
+| `backend/main.py` | API Boundary | `C:/X/new/backend/` |
+| `backend/api/*.py` | API Boundary | `C:/X/new/backend/api/` |
+| `backend/core/data_loader.py` | Application | `C:/X/new/backend/core/` |
+| `backend/core/backtest.py` | Application | `C:/X/new/backend/core/` |
+| `backend/core/portfolio.py` | Application | `C:/X/new/backend/core/` |
+| `backend/core/ai_interpreter.py` | Application | `C:/X/new/backend/core/` |
+| `backend/core/indicators.py` | Domain | `C:/X/new/backend/core/` |
+| `backend/core/signals.py` | Domain | `C:/X/new/backend/core/` |
+| `backend/core/trend.py` | Domain | `C:/X/new/backend/core/` |
+| `backend/core/types/schemas.py` | Domain | `C:/X/new/backend/core/types/` |
+| `backend/core/types/errors.py` | Domain (cross-cut) | `C:/X/new/backend/core/types/` |
+| `backend/core/adapters/binance_adapter.py` | Infrastructure | `C:/X/new/backend/core/adapters/` |
+| `backend/core/adapters/krx_adapter.py` | Infrastructure | `C:/X/new/backend/core/adapters/` |
+| `backend/core/brokers/base.py` | Infrastructure (v3 IF만) | `C:/X/new/backend/core/brokers/` |
+| `backend/lib/cache.py` | Infrastructure | `C:/X/new/backend/lib/` |
+| `backend/lib/logger.py` | Infrastructure | `C:/X/new/backend/lib/` |
 
 ---
 
@@ -1004,135 +1262,194 @@ from .helpers import normalize_symbol
 
 ```
 C:/X/new/
-├── app.py
-├── pages/
-│   ├── 1_차트분석.py
-│   ├── 2_매매신호.py
-│   ├── 3_백테스팅.py
-│   └── 4_포트폴리오.py
-├── core/
-│   ├── __init__.py
-│   ├── data_loader.py
-│   ├── indicators.py
-│   ├── signals.py
-│   ├── trend.py
-│   ├── backtest.py
-│   ├── ai_interpreter.py       # ✨ Groq LLM 신호 해석
-│   ├── portfolio.py            # ✨ 포트폴리오 일괄 분석
-│   ├── types/
+├── Tradingmode/                 # 프론트엔드 (사용자 제공 + api.js 추가)
+│   ├── index.html
+│   ├── app.jsx
+│   ├── charts.jsx
+│   ├── signals-page.jsx
+│   ├── portfolio-page.jsx
+│   ├── tweaks-panel.jsx
+│   ├── data.js                  # 합성 데이터 (점진적으로 api.js로 대체)
+│   ├── api.js                   # ✨ NEW: 백엔드 fetch 단일 진입점
+│   ├── styles.css
+│   └── uploads/                 # CSV 업로드 임시 (옵션)
+│
+├── backend/                     # FastAPI 백엔드
+│   ├── main.py                  # FastAPI 앱 + CORSMiddleware
+│   ├── api/
 │   │   ├── __init__.py
-│   │   ├── schemas.py          # dataclass/Enum/Protocol
-│   │   └── errors.py           # 커스텀 예외 (Domain cross-cut)
-│   ├── adapters/
+│   │   ├── schemas.py           # Pydantic 모델
+│   │   ├── ohlcv.py
+│   │   ├── indicators.py
+│   │   ├── signals.py
+│   │   ├── trend.py
+│   │   ├── portfolio.py
+│   │   ├── backtest.py
+│   │   ├── ai.py
+│   │   └── market.py
+│   ├── core/
 │   │   ├── __init__.py
-│   │   ├── binance_adapter.py
-│   │   └── krx_adapter.py
-│   └── brokers/                # ✨ v3 placeholder
-│       ├── __init__.py
-│       └── base.py             # BrokerProtocol (인터페이스만)
-├── lib/
-│   ├── __init__.py
-│   ├── cache.py                # OHLCV + AI 응답 캐시
-│   └── logger.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_indicators.py
-│   ├── test_signals.py
-│   ├── test_trend.py
-│   ├── test_backtest.py
-│   ├── test_data_loader.py
-│   ├── test_ai_interpreter.py  # ✨ Mock Groq 클라이언트
-│   └── test_portfolio.py       # ✨
-├── data/                       # parquet 캐시 (gitignore)
+│   │   ├── data_loader.py
+│   │   ├── indicators.py
+│   │   ├── signals.py
+│   │   ├── trend.py
+│   │   ├── backtest.py
+│   │   ├── ai_interpreter.py
+│   │   ├── portfolio.py
+│   │   ├── types/
+│   │   │   ├── __init__.py
+│   │   │   ├── schemas.py
+│   │   │   └── errors.py
+│   │   ├── adapters/
+│   │   │   ├── __init__.py
+│   │   │   ├── binance_adapter.py
+│   │   │   └── krx_adapter.py
+│   │   └── brokers/
+│   │       ├── __init__.py
+│   │       └── base.py
+│   ├── lib/
+│   │   ├── __init__.py
+│   │   ├── cache.py
+│   │   └── logger.py
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_indicators.py
+│   │   ├── test_signals.py
+│   │   ├── test_trend.py
+│   │   ├── test_backtest.py
+│   │   ├── test_data_loader.py
+│   │   ├── test_ai_interpreter.py
+│   │   ├── test_portfolio.py
+│   │   └── test_api/            # ✨ NEW: FastAPI TestClient 통합 테스트
+│   │       ├── test_ohlcv.py
+│   │       ├── test_signals.py
+│   │       └── test_ai.py
+│   ├── pyproject.toml
+│   └── requirements.txt
+│
+├── docs/                        # PDCA 문서
+├── data/                        # parquet 캐시 (gitignore, backend가 사용)
 ├── examples/
-│   └── holdings_sample.csv     # ✨ 포트폴리오 입력 샘플
+│   └── holdings_sample.csv
 ├── .env.example
 ├── .gitignore
-├── pyproject.toml
-├── requirements.txt
 └── README.md
 ```
 
 ### 11.2 Implementation Order
 
-> **원칙**: Domain → Infrastructure → Application → Presentation 순서. 안쪽 레이어부터 테스트 가능 단위로 빌드.
-> AI/포트폴리오/broker는 단일 종목 분석이 동작한 후 추가하여 의존성 사이클 방지.
+> **원칙**: 백엔드 Domain → Infra → Application → API → 프론트 fetch 통합 순서.
+> 프론트는 이미 사용자가 합성 데이터로 동작 가능하므로, **백엔드 우선 구현 후 프론트 `data.js`를 `api.js`로 교체**.
+
+#### Backend (단계 1~6, 약 4시간)
 
 1. **Setup (10분)**
-   - [ ] `pyproject.toml`, `requirements.txt`, `.env.example`, `.gitignore` 작성
+   - [ ] `backend/pyproject.toml`, `requirements.txt`, `.env.example`, `.gitignore` 작성
    - [ ] uv 또는 venv로 가상환경 생성, 의존성 설치
 
 2. **Domain Layer (50분)**
-   - [ ] `core/types/schemas.py` — 모든 dataclass/Enum/Protocol 정의 (Holding, Portfolio, AICommentary, BrokerProtocol, Strategy 포함)
-   - [ ] `core/types/errors.py` — 커스텀 예외 (AIServiceError, PortfolioError 포함)
-   - [ ] `core/indicators.py` — pandas-ta 래퍼, `compute()` 일괄 함수
-   - [ ] `tests/test_indicators.py`
-   - [ ] `core/signals.py` — 4종 신호 감지 + `detect_all()`
-   - [ ] `tests/test_signals.py`
-   - [ ] `core/trend.py` — `classify()`
-   - [ ] `tests/test_trend.py`
+   - [ ] `backend/core/types/schemas.py` — dataclass/Enum/Protocol (Holding, Portfolio, AICommentary, BrokerProtocol, Strategy)
+   - [ ] `backend/core/types/errors.py` — 커스텀 예외 (DataSourceError, InvalidSymbolError, InsufficientDataError, AIServiceError, PortfolioError, CacheError)
+   - [ ] `backend/core/indicators.py` — pandas-ta 래퍼, `compute()` 일괄 함수
+   - [ ] `backend/tests/test_indicators.py`
+   - [ ] `backend/core/signals.py` — 4종 신호 감지 + `detect_all()`
+   - [ ] `backend/tests/test_signals.py`
+   - [ ] `backend/core/trend.py` — `classify()`
+   - [ ] `backend/tests/test_trend.py`
 
 3. **Infrastructure Layer (50분)**
-   - [ ] `lib/logger.py`
-   - [ ] `lib/cache.py` — OHLCV용 parquet + AI 응답용 JSON 캐시 (둘 다)
-   - [ ] `core/adapters/binance_adapter.py`
-   - [ ] `core/adapters/krx_adapter.py`
-   - [ ] `core/brokers/base.py` — `BrokerProtocol` Protocol 정의 (구현 X)
+   - [ ] `backend/lib/logger.py`
+   - [ ] `backend/lib/cache.py` — OHLCV parquet + AI 응답 JSON 캐시
+   - [ ] `backend/core/adapters/binance_adapter.py`
+   - [ ] `backend/core/adapters/krx_adapter.py`
+   - [ ] `backend/core/brokers/base.py` — `BrokerProtocol` (구현 X)
 
-4. **Application Layer — 단일 종목 (40분)**
-   - [ ] `core/data_loader.py` — 캐시 hit/miss + 어댑터 라우팅
-   - [ ] `tests/test_data_loader.py` (mock 어댑터)
-   - [ ] `core/backtest.py` + `MaCrossStrategy`
-   - [ ] `tests/test_backtest.py`
+4. **Application Layer (60분)**
+   - [ ] `backend/core/data_loader.py` — 캐시 hit/miss + 어댑터 라우팅
+   - [ ] `backend/tests/test_data_loader.py` (mock 어댑터)
+   - [ ] `backend/core/backtest.py` + `MaCrossStrategy`
+   - [ ] `backend/tests/test_backtest.py`
+   - [ ] `backend/core/ai_interpreter.py` — Groq client + 프롬프트 + 캐시
+   - [ ] `backend/tests/test_ai_interpreter.py` (Mock Groq)
+   - [ ] `backend/core/portfolio.py` — load_holdings_from_csv + analyze + FX 변환
+   - [ ] `backend/tests/test_portfolio.py`
 
-5. **Application Layer — AI 해석 (30분)** ✨
-   - [ ] `core/ai_interpreter.py` — Groq client + 프롬프트 + 캐시 + 면책
-   - [ ] `tests/test_ai_interpreter.py` — Mock Groq 클라이언트로 결정론적 검증
-   - [ ] 환경변수 미설정 시 graceful skip (앱 동작은 유지)
+5. **API Boundary Layer (60분)** ✨ NEW
+   - [ ] `backend/main.py` — FastAPI app + CORSMiddleware + 에러 핸들러
+   - [ ] `backend/api/schemas.py` — Pydantic 요청/응답 모델
+   - [ ] `backend/api/ohlcv.py` — GET /api/ohlcv
+   - [ ] `backend/api/indicators.py`, `signals.py`, `trend.py`
+   - [ ] `backend/api/portfolio.py` — POST /api/portfolio
+   - [ ] `backend/api/ai.py` — POST /api/ai/explain
+   - [ ] `backend/api/backtest.py` — POST /api/backtest
+   - [ ] `backend/api/market.py` — GET /api/market/snapshot
+   - [ ] `backend/tests/test_api/*` — FastAPI TestClient 통합 테스트
+   - [ ] OpenAPI docs 자동 생성 확인 (http://localhost:8000/docs)
 
-6. **Application Layer — 포트폴리오 (40분)** ✨
-   - [ ] `core/portfolio.py` — `load_holdings_from_csv`, `analyze`, 환율 변환
-   - [ ] `examples/holdings_sample.csv` — 데모용 샘플
-   - [ ] `tests/test_portfolio.py`
+6. **Backend 검증 (20분)**
+   - [ ] `uvicorn backend.main:app --reload` 실행
+   - [ ] curl/Postman으로 각 엔드포인트 1회 호출 검증
+   - [ ] BTCUSDT, 005930 실데이터 fetch 동작 확인
 
-7. **Presentation Layer (50분)**
-   - [ ] `app.py` — 메인 + 안내
-   - [ ] `pages/1_차트분석.py`
-   - [ ] `pages/2_매매신호.py` (AI 해설 expander 포함 — 단계 5 완료 후)
-   - [ ] `pages/3_백테스팅.py`
-   - [ ] `pages/4_포트폴리오.py` ✨ (단계 6 완료 후)
+#### Frontend (단계 7~9, 약 1.5시간)
 
-8. **Validation (20분)**
-   - [ ] BTC/USDT 1d 시연 (지표 + 신호 + AI 해설)
-   - [ ] 005930 1d 시연
-   - [ ] 샘플 CSV로 포트폴리오 페이지 시연
-   - [ ] README.md 작성 (Groq API 키 발급 안내 포함)
+7. **api.js 작성 (20분)** ✨ NEW
+   - [ ] `Tradingmode/api.js` — fetch 래퍼 (§4.5.5 참조)
+   - [ ] `index.html`에 `<script src="api.js?v=5"></script>` 추가 (data.js보다 먼저)
+   - [ ] 브라우저 콘솔에서 `await api.ohlcv({...})` 동작 확인
 
-> **예상 총 시간**: ~5시간 (검증·디버깅 포함 ~6시간)
-> 단계 5(AI)와 6(포트폴리오)은 독립적이므로 둘 중 하나 먼저 진행 가능.
+8. **data.js → api.js 교체 (50분)**
+   - [ ] `charts.jsx`: `instrument.candles` 출처를 합성 → `await api.ohlcv()` 결과로 교체
+   - [ ] `charts.jsx`: 지표는 `await api.indicators()` 결과 사용
+   - [ ] `charts.jsx`: 신호 마커는 `await api.signals()`, 추세는 `await api.trend()`
+   - [ ] `signals-page.jsx`: AI 해설을 `window.claude` → `await api.aiExplain()` 교체
+   - [ ] `portfolio-page.jsx`: MOCK_HOLDINGS는 그대로 시연용으로 유지하되, `await api.portfolio()` 결과 표시 옵션 추가
+   - [ ] `app.jsx`: TopBar 시세를 `await api.marketSnapshot()` 폴링(30초 간격)
+   - [ ] DataStatusBar: 실제 fetch 상태 반영 (loading/error/rate_limit)
+
+9. **Frontend 검증 (20분)**
+   - [ ] BTC/USDT 차트 + 지표 + 신호 실데이터 표시
+   - [ ] 005930 동일
+   - [ ] AI 해설 expander 클릭 → Groq 호출 → 결과 표시
+   - [ ] 포트폴리오 페이지에서 holdings_sample.csv 업로드 → 결과 표시
+
+> **예상 총 시간**: ~5.5시간 (검증·디버깅 포함 ~7시간)
+> 백엔드 단계 4(Application)는 5(API) 작업과 병렬 가능 (테스트와 엔드포인트 동시 진행).
 
 ### 11.3 의존성 (`requirements.txt` 초안)
 
+**Backend (`backend/requirements.txt`)**
+
 ```
-streamlit>=1.30
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
 pandas>=2.1
 pandas-ta>=0.3.14b
-plotly>=5.18
 python-binance>=1.0.19
 pykrx>=1.0.45
 finance-datareader>=0.9.50
 backtesting>=0.3.3
 pyarrow>=15.0
 python-dotenv>=1.0
-groq>=0.4              # ✨ AI 신호 해석
+groq>=0.4
+httpx>=0.26              # FastAPI TestClient 의존
 # dev
 pytest>=8.0
 pytest-mock>=3.12
-pytest-asyncio>=0.23   # ✨ ai_interpreter 비동기 테스트
+pytest-asyncio>=0.23
 ruff>=0.3
 black>=24.0
 mypy>=1.9
 ```
+
+**Frontend** — v0.4는 외부 빌드 도구 없이 CDN 사용:
+- React 18.3.1 (UMD)
+- React-DOM 18.3.1 (UMD)
+- @babel/standalone 7.29.0
+- Google Fonts (Inter, JetBrains Mono)
+
+> **v2 전환**: `package.json` + Vite로 번들링, `lightweight-charts` 도입 검토.
 
 ---
 
@@ -1187,3 +1504,4 @@ core/brokers/
 | 0.1 | 2026-04-29 | 초안 작성 (Plan 기반 모듈/타입/알고리즘 설계) | 900033@interojo.com |
 | 0.2 | 2026-04-29 | AI 신호 해석(Groq), 포트폴리오 분석(MVP), Broker 인터페이스(v3 placeholder) 추가. §12 Future Extensions 신설. | 900033@interojo.com |
 | 0.3 | 2026-04-29 | design-validator 후속 수정: 사이드바 4페이지 다이어그램, app.py 의존 정정, FxQuote/HoldingAnalysis FX 메타데이터, errors.py를 core/types/로 이동, IndicatorConfig EMA 정정, Stochastic 제거, SignalKind/SignalAction Enum 통일, bbands std=2.0, Strategy/BrokerProtocol 위치 명시, interpret_signals_batch sync 래퍼 명시, Signal.strength v0.2=1.0 고정 + v2 공식 명세, Phase 5 N/A 추가. | 900033@interojo.com |
+| 0.4 | 2026-04-30 | **아키텍처 피벗**: Streamlit → React SPA(`Tradingmode/`) + FastAPI 백엔드(`backend/`) 분리. §4.5 REST API 명세 신설(엔드포인트 9개 + Pydantic 스키마 + CORS + 에러 코드 + 프론트 fetch 패턴). §5 UI를 React 프로토타입 매핑으로 재작성. §9 Layer Structure에 API Boundary 추가. §11.1 폴더 구조 backend/ + Tradingmode/ 분리. §11.2 구현 순서를 백엔드 → API → 프론트 통합 9단계로 재편. | 900033@interojo.com |
