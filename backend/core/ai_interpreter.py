@@ -95,8 +95,9 @@ def _build_user_prompt(
         "macd": _round_or_dash(bar.get("MACD_12_26_9")),
         "macd_signal": _round_or_dash(bar.get("MACDs_12_26_9")),
         "adx_14": _round_or_dash(bar.get("ADX_14")),
-        "bb_upper": _round_or_dash(bar.get("BBU_20_2.0")),
-        "bb_lower": _round_or_dash(bar.get("BBL_20_2.0")),
+        # pandas-ta 0.4.x: column names include the std value twice (legacy quirk)
+        "bb_upper": _round_or_dash(bar.get("BBU_20_2.0_2.0")),
+        "bb_lower": _round_or_dash(bar.get("BBL_20_2.0_2.0")),
     }
 
     return (

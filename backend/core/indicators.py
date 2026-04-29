@@ -136,8 +136,8 @@ def compute(df: pd.DataFrame, config: IndicatorConfig | None = None) -> pd.DataF
         SMA_5, SMA_20, SMA_60, SMA_120
         RSI_14
         MACD_12_26_9, MACDs_12_26_9, MACDh_12_26_9
-        BBL_20_2.0, BBM_20_2.0, BBU_20_2.0
-        ADX_14, DMP_14, DMN_14
+        BBL_20_2.0_2.0, BBM_20_2.0_2.0, BBU_20_2.0_2.0   (pandas-ta 0.4.x naming)
+        ADX_14, DMP_14, DMN_14, ADXR_14_2
     """
     _validate_ohlcv(df)
     cfg = config or {}
