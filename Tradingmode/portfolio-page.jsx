@@ -73,17 +73,33 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
   const lookback = periodMap[period];
 
   const perfSeries = useMemoP(() => {
-    // align by index from the end (all instruments have 240 bars)
-    const N = rows[0]?.candles.length || 240;
-    const start = Math.max(0, N - lookback);
+    // Real backend feeds different bar counts per market (crypto 365 vs KR 244),
+    // so align from the end using the *shortest* series. Skip bars where any
+    // holding is missing data.
+    if (!rows.length) return [];
+    const minN = Math.min.apply(null, rows.map((r) => r.candles.length));
+    const start = Math.max(0, minN - lookback);
+    const refRow = rows.reduce(
+      (best, r) => (r.candles.length < best.candles.length ? r : best),
+      rows[0],
+    );
     const series = [];
-    for (let i = start; i < N; i++) {
+    for (let i = start; i < minN; i++) {
       let total = 0;
+      let usable = true;
       for (const r of rows) {
+        // Each row aligns from the end of its own series, so map global index
+        // i (relative to refRow) onto the row's own offset.
+        const offset = r.candles.length - (minN - i);
+        const candle = r.candles[offset];
+        if (!candle || candle.c == null) { usable = false; break; }
         const fx = r.meta.currency === 'KRW' ? 1 : FX_KRW_PER_USD;
-        total += r.qty * r.candles[i].c * fx;
+        total += r.qty * candle.c * fx;
       }
-      series.push({ t: rows[0].candles[i].t, v: total });
+      if (!usable) continue;
+      const t = refRow.candles[i]?.t;
+      if (t == null) continue;
+      series.push({ t, v: total });
     }
     return series;
   }, [rows, lookback]);

@@ -40,6 +40,10 @@ dist/
 Tradingmode/uploads/*
 !Tradingmode/uploads/.gitkeep
 
+# Playwright MCP artifacts + ad-hoc verification screenshots
+.playwright-mcp/
+phase*.png
+
 # OS
 .DS_Store
 Thumbs.db

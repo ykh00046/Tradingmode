@@ -51,57 +51,74 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
     const key = keyOf(s);
     if (aiCache[key]?.state === 'ready' || aiCache[key]?.state === 'loading') return;
     setAiCache((c) => ({ ...c, [key]: { state: 'loading' } }));
+
+    // Demo mode: synthesise a plausible-looking response so the UI is testable
+    // without a backend. Real mode (default) calls the FastAPI Groq adapter.
+    if (window.DEMO_MODE) {
+      await new Promise((r) => setTimeout(r, 300));
+      setAiCache((c) => ({
+        ...c,
+        [key]: {
+          state: 'ready',
+          data: {
+            summary: '[데모] ' + (s.label || s.kind) + ' 발생',
+            detail: '데모 모드입니다. 실제 LLM 해설은 백엔드(GROQ_API_KEY) 설정 후 사용 가능합니다.',
+            confidence: 'medium',
+            disclaimer: '본 해설은 참고용이며 투자 자문이 아닙니다.',
+          },
+        },
+      }));
+      return;
+    }
+
     try {
       const inst = data[s.symbol];
       const i = s.i;
-      const c = inst.candles[i];
-      const prevC = inst.candles[Math.max(0, i - 1)];
-      const dayChg = ((c.c - prevC.c) / prevC.c * 100).toFixed(2);
+      const candle = inst.candles[i];
       const ind = inst.ind;
-      const ctx = {
-        symbol: s.symbol,
-        name: s.name,
-        market: s.market,
-        kind: s.kind,
-        label: s.label,
-        date: fmt.date(c.t),
-        price: c.c,
-        change_pct: dayChg,
-        rsi14: ind.rsi14[i]?.toFixed(1),
-        macd: ind.macd.line[i]?.toFixed(2),
-        macd_signal: ind.macd.signal[i]?.toFixed(2),
-        ma20: ind.ma20[i]?.toFixed(2),
-        ma60: ind.ma60[i]?.toFixed(2),
-        bb_upper: ind.bb.up[i]?.toFixed(2),
-        bb_lower: ind.bb.lo[i]?.toFixed(2),
-        strength: (s.strength * 100).toFixed(0) + '%',
-        direction: dirOf(s.kind),
+
+      // Backend rebuilds its own indicator context from the OHLCV cache, but
+      // we forward what the chart is currently showing so the LLM and the user
+      // see the same numbers. Backend ignores keys it doesn't need.
+      const indicators_at_signal = {
+        rsi:        ind.rsi14[i] != null ? Number(ind.rsi14[i]) : null,
+        macd:       ind.macd.line[i] != null ? Number(ind.macd.line[i]) : null,
+        macd_signal: ind.macd.signal[i] != null ? Number(ind.macd.signal[i]) : null,
+        sma_short:  ind.ma20[i] != null ? Number(ind.ma20[i]) : null,
+        sma_long:   ind.ma60[i] != null ? Number(ind.ma60[i]) : null,
+        bb_upper:   ind.bb.up[i] != null ? Number(ind.bb.up[i]) : null,
+        bb_lower:   ind.bb.lo[i] != null ? Number(ind.bb.lo[i]) : null,
       };
-      const prompt = `당신은 한국어로 답하는 정량 트레이딩 분석가입니다. 아래 신호를 보수적인 어조로 해설하세요.
 
-신호 컨텍스트:
-${Object.entries(ctx).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
+      const body = {
+        market:       s.market === 'kr' ? 'kr_stock' : 'crypto',
+        symbol:       (s.symbol || '').replace('/', ''),
+        interval:     '1d',
+        signal_kind:  s.kind,
+        timestamp:    s.t,
+        price:        candle.c,
+        indicators_at_signal,
+      };
 
-다음 JSON 형식으로만 응답하세요. 추가 텍스트 금지.
-{
-  "summary": "한 문장 요약 (60자 이내)",
-  "detail": "왜 이 신호가 발생했는지 2~3문장으로 기술적 근거를 설명",
-  "watch": "다음 1~3거래일 동안 모니터링할 기준 1~2가지 (불릿 형태 짧게)",
-  "confidence": "low | medium | high",
-  "rationale_keys": ["근거1", "근거2", "근거3"]
-}`;
-      const txt = await window.claude.complete(prompt);
-      // Extract JSON
-      let parsed;
-      try {
-        const m = txt.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse(m ? m[0] : txt);
-      } catch (e) {
-        parsed = { summary: txt.slice(0, 80), detail: txt, confidence: 'medium', rationale_keys: [] };
-      }
-      setAiCache((c) => ({ ...c, [key]: { state: 'ready', data: parsed } }));
+      const resp = await window.api.aiExplain(body, { timeout: 20000 });
+      setAiCache((c) => ({
+        ...c,
+        [key]: {
+          state: 'ready',
+          data: {
+            summary:    resp.summary,
+            detail:     resp.detail,
+            confidence: resp.confidence,
+            model:      resp.model,
+            disclaimer: resp.disclaimer,
+          },
+        },
+      }));
     } catch (e) {
-      setAiCache((c) => ({ ...c, [key]: { state: 'error', error: String(e) } }));
+      const msg = e && e.code === 'AI_SERVICE_ERROR'
+        ? 'AI 해설 사용 불가 — GROQ_API_KEY 설정 필요'
+        : (e && e.message) || String(e);
+      setAiCache((c) => ({ ...c, [key]: { state: 'error', error: msg } }));
     }
   }
 

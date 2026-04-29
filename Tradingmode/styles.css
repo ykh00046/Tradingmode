@@ -963,3 +963,55 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: oklch(0.30 0.006 240); }
 ::-webkit-scrollbar-thumb:hover { background: oklch(0.36 0.008 240); }
+
+/* ── Backend loading / error screens ────────────────── */
+.loading-screen {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  background: var(--bg);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--text);
+}
+.loading-card {
+  width: min(440px, 90vw);
+  padding: 32px 28px;
+  background: oklch(0.20 0.006 240);
+  border: 1px solid oklch(0.28 0.008 240);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px oklch(0% 0 0 / 40%);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.loading-card.error { border-color: oklch(0.55 0.20 25 / 60%); }
+.loading-logo { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.04em; }
+.loading-logo .logo-mark {
+  width: 12px; height: 12px; border-radius: 3px;
+  background: linear-gradient(135deg, oklch(0.72 0.18 145), oklch(0.65 0.22 25));
+}
+.loading-logo .logo-text { font-size: 13px; }
+.loading-logo .logo-dim { color: oklch(0.6 0.005 240); }
+.loading-status { font-size: 14px; color: oklch(0.85 0.01 240); }
+.loading-bar {
+  height: 6px; background: oklch(0.26 0.008 240);
+  border-radius: 99px; overflow: hidden;
+}
+.loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, oklch(0.72 0.18 145), oklch(0.78 0.16 145));
+  transition: width 200ms ease-out;
+}
+.loading-meta { font-size: 12px; color: var(--text); }
+.loading-meta code { padding: 2px 6px; background: oklch(0.26 0.008 240); border-radius: 4px; }
+.loading-actions { display: flex; gap: 8px; margin-top: 6px; }
+.loading-demo-btn {
+  flex: 1;
+  padding: 8px 14px;
+  background: oklch(0.28 0.01 240);
+  color: var(--text);
+  border: 1px solid oklch(0.36 0.012 240);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: background 100ms;
+}
+.loading-demo-btn:hover { background: oklch(0.34 0.012 240); }

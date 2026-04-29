@@ -616,6 +616,57 @@ function TweaksContent({ tweaks, setTweak }) {
   );
 }
 
+// ─── Backend loading screen (shown until /api/* fan-out completes) ──────
+function LoadingScreen({ progress, onUseDemo }) {
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  return (
+    <div className="loading-screen">
+      <div className="loading-card">
+        <div className="loading-logo">
+          <span className="logo-mark" />
+          <span className="logo-text">TRADINGMODE<span className="logo-dim">.LAB</span></span>
+        </div>
+        <div className="loading-status">
+          백엔드에서 시세·지표·신호를 불러오는 중…
+        </div>
+        <div className="loading-bar">
+          <div className="loading-bar-fill" style={{ width: pct + '%' }} />
+        </div>
+        <div className="loading-meta mono muted">
+          {progress.done} / {progress.total} 종목
+          {progress.current ? ' · 현재: ' + progress.current : ''}
+        </div>
+        <button className="loading-demo-btn" onClick={onUseDemo}>
+          데모 모드로 전환 (?demo=1)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ErrorScreen({ error, onRetry, onUseDemo }) {
+  return (
+    <div className="loading-screen">
+      <div className="loading-card error">
+        <div className="loading-status">
+          ⚠️ 백엔드 연결 실패
+        </div>
+        <div className="loading-meta mono">
+          {error && (error.code || 'NETWORK')}: {error && error.message}
+        </div>
+        <div className="loading-meta muted" style={{ marginTop: 12 }}>
+          백엔드가 실행 중인지 확인하세요:<br/>
+          <code className="mono">cd backend && uvicorn main:app --port 8000</code>
+        </div>
+        <div className="loading-actions">
+          <button className="loading-demo-btn" onClick={onRetry}>다시 시도</button>
+          <button className="loading-demo-btn" onClick={onUseDemo}>데모 모드</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root App ─────────────────────────────────────────────────
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -627,12 +678,81 @@ function App() {
   const [indicators, setIndicators] = useState({ ma20: true, ma60: true, ma120: false, bb: true });
   const [signalsOn, setSignalsOn] = useState(true);
   const [trendBand, setTrendBand] = useState(true);
-  const [dataState, setDataState] = useState({ status: 'ok', message: '캐시 적중', source: 'Binance Spot' });
+  const [dataState, setDataState] = useState(
+    window.DEMO_MODE
+      ? { status: 'ok', message: '데모 모드 (합성 데이터)', source: 'Synthetic' }
+      : { status: 'loading', message: '백엔드 연결 중…', source: 'FastAPI' }
+  );
+
+  // Backend loading state — only relevant when DEMO_MODE is off.
+  const [dataReady, setDataReady] = useState(window.DEMO_MODE);
+  const [loadProgress, setLoadProgress] = useState({ done: 0, total: 0, current: null });
+  const [loadError, setLoadError] = useState(null);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);   // bumped after loader swaps DATA
+  const [marketSnap, setMarketSnap] = useState(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Fetch real instruments from backend on mount (skipped in DEMO_MODE).
+  useEffect(() => {
+    if (window.DEMO_MODE || !window.loader) return;
+    let alive = true;
+    const ctl = new AbortController();
+    (async () => {
+      setLoadError(null);
+      setDataState({ status: 'loading', message: '백엔드에서 데이터 수집 중…', source: 'FastAPI' });
+      try {
+        // Probe backend first so we fail fast with a clearer error.
+        await window.api.health({ signal: ctl.signal, timeout: 5000 });
+        await window.loader.loadAllInstruments(window.MarketData.UNIVERSE, {
+          signal: ctl.signal,
+          onProgress: (p) => { if (alive) setLoadProgress(p); },
+        });
+        if (!alive) return;
+        setDataReady(true);
+        setDataVersion((v) => v + 1);
+        setDataState({ status: 'ok', message: '실데이터 로드 완료', source: 'FastAPI' });
+      } catch (e) {
+        if (!alive) return;
+        if (e.name === 'AbortError') return;
+        console.error('[App] backend load failed', e);
+        setLoadError(e);
+        setDataState({ status: 'error', message: e.message || '백엔드 연결 실패', source: 'FastAPI' });
+      }
+    })();
+    return () => { alive = false; ctl.abort(); };
+  }, [retryNonce]);
+
+  // TopBar market snapshot polling (30s, paused when tab is hidden).
+  useEffect(() => {
+    if (window.DEMO_MODE || !dataReady) return;
+    let alive = true;
+    let timerId = null;
+    const ctlRef = { current: null };
+
+    async function tick() {
+      if (!alive || document.visibilityState !== 'visible') return;
+      if (ctlRef.current) ctlRef.current.abort();
+      ctlRef.current = new AbortController();
+      try {
+        const snap = await window.api.marketSnapshot({ signal: ctlRef.current.signal, timeout: 8000 });
+        if (alive) setMarketSnap(snap);
+      } catch (_) { /* TopBar: silent fail */ }
+    }
+    tick();
+    timerId = setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      alive = false;
+      clearInterval(timerId);
+      document.removeEventListener('visibilitychange', tick);
+      if (ctlRef.current) ctlRef.current.abort();
+    };
+  }, [dataReady]);
 
   // Tweaks host wiring
   useEffect(() => {
@@ -649,12 +769,39 @@ function App() {
   const upColor = tweaks.upDownConvention === 'eastern' ? 'oklch(0.65 0.22 25)' : 'oklch(0.72 0.18 145)';
   const downColor = tweaks.upDownConvention === 'eastern' ? 'oklch(0.70 0.13 250)' : 'oklch(0.65 0.22 25)';
 
+  // Show loading / error screens before the main UI tries to read DATA — the
+  // loader will have replaced window.MarketData.DATA by the time we render.
+  if (!window.DEMO_MODE && !dataReady) {
+    if (loadError) {
+      return (
+        <ErrorScreen
+          error={loadError}
+          onRetry={() => setRetryNonce((n) => n + 1)}
+          onUseDemo={() => { window.location.search = '?demo=1'; }}
+        />
+      );
+    }
+    return (
+      <LoadingScreen
+        progress={loadProgress}
+        onUseDemo={() => { window.location.search = '?demo=1'; }}
+      />
+    );
+  }
+
   const instrument = window.MarketData.DATA[current];
   const universe = window.MarketData.UNIVERSE;
   const data = window.MarketData.DATA;
 
-  const fxKRW = 1382.40;
-  const btcSpot = data['BTC/USDT'].candles[data['BTC/USDT'].candles.length - 1].c;
+  // Skip render briefly when current symbol isn't loaded yet (race during retry).
+  if (!instrument) {
+    return <LoadingScreen progress={loadProgress} onUseDemo={() => { window.location.search = '?demo=1'; }} />;
+  }
+
+  // Use TopBar snapshot from backend when available, fall back to derived values.
+  const fxKRW = (marketSnap && marketSnap.usd_krw && marketSnap.usd_krw.value) || 1382.40;
+  const btcSpot = (marketSnap && marketSnap.btc && marketSnap.btc.value)
+    || data['BTC/USDT'].candles[data['BTC/USDT'].candles.length - 1].c;
 
   return (
     <div className="app" style={{ ['--up']: upColor, ['--down']: downColor }}>
