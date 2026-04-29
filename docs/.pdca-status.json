@@ -1,0 +1,39 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-04-29T00:00:00.000Z",
+  "activeFeatures": ["trading-analysis-tool"],
+  "primaryFeature": "trading-analysis-tool",
+  "features": {
+    "trading-analysis-tool": {
+      "phase": "design",
+      "level": "Dynamic",
+      "createdAt": "2026-04-29",
+      "documents": {
+        "plan": "docs/01-plan/features/trading-analysis-tool.plan.md",
+        "design": "docs/02-design/features/trading-analysis-tool.design.md",
+        "analysis": null,
+        "report": null
+      },
+      "matchRate": null,
+      "iteration": 0
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-04-29T05:51:33.511Z",
+    "onboardingCompleted": true,
+    "lastActivity": "2026-04-29T00:00:00.000Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-04-29",
+      "feature": "trading-analysis-tool",
+      "action": "plan-created",
+      "phase": "plan"
+    }
+  ]
+}
