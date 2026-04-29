@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-04-29T00:00:00.000Z",
+  "lastUpdated": "2026-04-29T02:00:00.000Z",
   "activeFeatures": ["trading-analysis-tool"],
   "primaryFeature": "trading-analysis-tool",
   "features": {
@@ -34,6 +34,26 @@
       "feature": "trading-analysis-tool",
       "action": "plan-created",
       "phase": "plan"
+    },
+    {
+      "timestamp": "2026-04-29",
+      "feature": "trading-analysis-tool",
+      "action": "design-created",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-04-29",
+      "feature": "trading-analysis-tool",
+      "action": "plan-design-updated-v0.2",
+      "note": "AI(Groq) + 포트폴리오 + 자동매매 placeholder 통합",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-04-29",
+      "feature": "trading-analysis-tool",
+      "action": "design-validator-fixes-v0.3",
+      "note": "검증 결과 86% → High 4건 + Medium 7건 + Low 다수 수정",
+      "phase": "design"
     }
   ]
 }

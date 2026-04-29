@@ -45,20 +45,27 @@ project_version: 0.1.0
 
 - [ ] 암호화폐(Binance Spot) OHLCV 데이터 수집 (1m, 5m, 15m, 1h, 4h, 1d)
 - [ ] 한국 주식(KOSPI/KOSDAQ) 일봉/분봉 데이터 수집 (pykrx + FinanceDataReader)
-- [ ] 기술적 지표 계산: SMA/EMA, RSI, MACD, 볼린저밴드, ADX, Stochastic
+- [ ] 기술적 지표 계산: SMA(5,20,60,120) 차트 오버레이 + EMA(12,26) MACD 내부, RSI(14), MACD(12,26,9), 볼린저밴드(20,2), ADX(14)
 - [ ] 추세 판별 로직: ADX + 이동평균 배열 기반 상승/하락/횡보 분류
 - [ ] 매매 신호 탐지: 골든/데드크로스, RSI 과매수/과매도, RSI 다이버전스, MACD 교차
-- [ ] 백테스팅 엔진: 신호 기반 진입/청산, 수익률·MDD·승률·샤프지수 산출
-- [ ] Streamlit 웹 대시보드: 종목 선택, 캔들 차트(plotly), 지표 오버레이, 신호 표시, 백테스트 결과 표시
-- [ ] 데이터 캐싱: 동일 요청 반복 호출 방지(SQLite 또는 parquet)
+- [ ] **AI 신호 해석**: Groq API(llama-3.3-70b-versatile, free tier)로 감지된 신호의 자연어 해설 생성
+- [ ] 백테스팅 엔진(단일 종목): 신호 기반 진입/청산, 수익률·MDD·승률·샤프지수 산출
+- [ ] **포트폴리오 보유 종목 입력**: CSV 업로드 또는 수동(`{symbol, quantity, avg_price}`)
+- [ ] **포트폴리오 일괄 분석**: 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 표시
+- [ ] **Broker 어댑터 인터페이스 정의**(자동매매 v3 확장 지점 — 본 사이클은 시그니처만, 구현 X)
+- [ ] Streamlit 웹 대시보드: 종목 선택, 캔들 차트(plotly), 지표 오버레이, 신호 표시, 백테스트 결과 표시, 포트폴리오 페이지
+- [ ] 데이터 캐싱: 동일 요청 반복 호출 방지(parquet)
 
 ### 2.2 Out of Scope
 
-- 실시간 자동 매매(주문 실행) — 분석/시뮬레이션 전용
+- **자동매매 실행 로직 — v3** (본 사이클에서는 broker 어댑터 인터페이스만 정의, 실제 주문 실행 ❌)
+- **포트폴리오 단위 백테스팅**(리밸런싱·포지션 사이징·최적 비중) — v2
+- 뉴스/공시 sentiment 분석 — v2 고려
+- 종목 간 상관관계·리스크 분산 분석 — v2
 - 옵션/선물/FX 등 파생상품 (1차 릴리스)
 - 다중 사용자 인증/계정 시스템
 - 모바일 네이티브 앱
-- 머신러닝 기반 예측 모델 (1차 릴리스, 추후 확장 가능)
+- 머신러닝 기반 가격 예측 모델 (1차 릴리스, 추후 확장 가능)
 - 실시간 알림(Slack/Telegram) — v2 고려
 
 ---
@@ -72,7 +79,7 @@ project_version: 0.1.0
 | FR-01 | Binance Spot에서 지정 심볼·타임프레임 OHLCV 캔들 데이터 다운로드 | High | Pending |
 | FR-02 | KOSPI/KOSDAQ 종목 코드로 일봉 OHLCV 다운로드 | High | Pending |
 | FR-03 | 다운로드한 데이터를 로컬에 캐싱하고 재사용 | High | Pending |
-| FR-04 | SMA/EMA(5,20,60,120), RSI(14), MACD(12,26,9), 볼린저밴드(20,2), ADX(14) 계산 | High | Pending |
+| FR-04 | SMA(5,20,60,120) 차트 오버레이 + MACD 내부 EMA(12,26), RSI(14), MACD(12,26,9), 볼린저밴드(20,2.0), ADX(14) 계산 | High | Pending |
 | FR-05 | 추세 분류: ADX>25 + MA 정배열 → 상승 / 역배열 → 하락 / 그 외 → 횡보 | High | Pending |
 | FR-06 | 골든크로스(MA20 ↑ MA60), 데드크로스 신호 감지 | High | Pending |
 | FR-07 | RSI 과매수(>70)/과매도(<30) 영역 진입/이탈 신호 | High | Pending |
@@ -82,6 +89,10 @@ project_version: 0.1.0
 | FR-11 | Streamlit 대시보드 메인 화면: 종목/타임프레임 선택, 캔들 차트 + 지표 오버레이 | High | Pending |
 | FR-12 | 매매 신호 페이지: 신호 발생 시점 차트 표시 + 최근 신호 리스트 | High | Pending |
 | FR-13 | 백테스팅 페이지: 전략 선택 → 결과 차트 + 통계 테이블 | High | Pending |
+| FR-14 | Groq API(llama-3.3-70b-versatile)로 감지 신호의 자연어 해설 생성 | Medium | Pending |
+| FR-15 | 보유 종목 입력: CSV 업로드 + 수동 입력(`symbol, quantity, avg_price`) | High | Pending |
+| FR-16 | 포트폴리오 페이지: 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 표시 | High | Pending |
+| FR-17 | broker 어댑터 인터페이스 정의(주문 메서드 시그니처만, 실제 구현 X) | Low | Pending |
 
 ### 3.2 Non-Functional Requirements
 
@@ -123,6 +134,10 @@ project_version: 0.1.0
 | pandas-ta 일부 지표 NaN 처리 불일치 | Medium | Medium | 핵심 지표는 검증된 사례로 단위 테스트 + 수동 검증 |
 | 매매 신호 거짓 양성(False Positive) 과다 | High | High | 백테스팅으로 정량 검증, 신호 강도 점수화로 필터링 |
 | TA-Lib 컴파일 이슈(Windows) | Medium | High | TA-Lib 대신 순수 Python 구현인 `pandas-ta` 사용 |
+| Groq Rate Limit (free tier ~30 req/min) 초과 | Medium | Medium | 신호 변경 시점에만 호출, 디바운스, 결과 캐싱(`signal_kind+timestamp` 키) |
+| LLM 환각/잘못된 해석 | High | Medium | 프롬프트에 지표 수치 명시, low temperature, "투자 자문 아님" 면책 표시 |
+| 포트폴리오 종목 가격 데이터 시점 불일치(crypto 24/7 vs KR 장중) | Medium | Medium | 모든 종목 동일 기준 시점(전일 종가)으로 정규화, KRW/USD 환율 표기 |
+| Groq API 키 노출 위험 | High | Low | `.env` + `.gitignore`, `streamlit secrets`(배포 시) 사용 |
 
 ---
 
@@ -154,6 +169,8 @@ project_version: 0.1.0
 | 데이터 저장 | SQLite / parquet / csv | **parquet (pyarrow)** | 컬럼 기반·고압축·pandas 친화 |
 | 패키지 매니저 | pip / poetry / uv | **uv** | 빠른 설치, 단일 venv 관리 용이 |
 | 테스트 | pytest / unittest | **pytest** | 사실상 표준 |
+| AI 신호 해석 | Groq / OpenAI / Claude / Local LLM | **Groq (`llama-3.3-70b-versatile`)** | Free tier 제공, 빠른 추론, OpenAI 호환 SDK(`groq` PyPI) |
+| Broker 추상화(v3) | KIS / 키움 / Binance Trade | **인터페이스만 정의** | 본 사이클은 어댑터 패턴 확장 지점 명시, 실제 주문 X |
 
 ### 6.3 Clean Architecture Approach
 
@@ -166,7 +183,8 @@ C:/X/new/
 ├── pages/                     # Streamlit 멀티페이지
 │   ├── 1_차트분석.py
 │   ├── 2_매매신호.py
-│   └── 3_백테스팅.py
+│   ├── 3_백테스팅.py
+│   └── 4_포트폴리오.py
 ├── core/                      # 도메인 모듈 (services 역할)
 │   ├── data_loader.py         # 거래소/주식 어댑터 통합
 │   ├── adapters/
@@ -175,12 +193,19 @@ C:/X/new/
 │   ├── indicators.py          # 기술적 지표
 │   ├── signals.py             # 매매 신호
 │   ├── trend.py               # 추세 판별
-│   └── backtest.py            # 백테스팅
-├── lib/                       # 공용 유틸 (캐시, 로깅)
+│   ├── backtest.py            # 백테스팅 (단일 종목)
+│   ├── ai_interpreter.py      # Groq LLM 신호 해석
+│   ├── portfolio.py           # 포트폴리오 일괄 분석
+│   └── brokers/               # 자동매매 어댑터 (v3, 인터페이스만)
+│       └── base.py
+├── lib/                       # Infrastructure 유틸 (캐시, 로깅)
 │   ├── cache.py
 │   └── logger.py
-├── types/                     # 타입 정의 (TypedDict, dataclass)
-│   └── schemas.py
+└── core/types/                # Domain 타입 (schemas, errors)
+    ├── schemas.py             # dataclass/Enum/Protocol
+    └── errors.py              # 커스텀 예외
+
+# 모든 Python 패키지 폴더에 `__init__.py` 자동 생성 (생략 표기).
 ├── tests/
 │   ├── test_indicators.py
 │   ├── test_signals.py
@@ -220,10 +245,12 @@ C:/X/new/
 |----------|---------|-------|:-------------:|
 | `BINANCE_API_KEY` | (선택) Rate limit 완화용 | Server | ☑ (옵션) |
 | `BINANCE_API_SECRET` | (선택) 위와 동일 | Server | ☑ (옵션) |
+| `GROQ_API_KEY` | AI 신호 해석용 Groq API 키 (free tier 가능, 미설정 시 AI 해설 비활성) | Server | ☑ |
 | `CACHE_DIR` | parquet 캐시 경로 | Server | ☑ (기본 `./data`) |
 | `LOG_LEVEL` | INFO/DEBUG/WARNING | Server | ☑ |
 
 > Binance public market data는 인증 없이도 조회 가능하므로 API 키는 선택사항.
+> Groq API 키는 https://console.groq.com 에서 무료 발급. 미설정 시 AI 해설 기능만 비활성, 나머지 동작.
 
 ### 7.4 Pipeline Integration
 
@@ -251,3 +278,5 @@ C:/X/new/
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-29 | 초안 작성 | 900033@interojo.com |
+| 0.2 | 2026-04-29 | AI 신호 해석(Groq), 포트폴리오 분석(MVP), 자동매매 어댑터 인터페이스(placeholder) 추가. 시중 OSS 대비 차별화 강화. | 900033@interojo.com |
+| 0.3 | 2026-04-29 | design-validator 검증(86% → 목표 90%+) 후속 수정: Stochastic 명세 정합화, EMA(12/26)는 MACD 내부용 명시, errors.py를 core/types/로 이동, types/ 경로 통일, Phase 5 Pipeline N/A 명시. | 900033@interojo.com |
