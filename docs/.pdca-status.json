@@ -1,9 +1,22 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": [],
-  "primaryFeature": null,
+  "activeFeatures": ["ai-strategy-coach"],
+  "primaryFeature": "ai-strategy-coach",
   "features": {
+    "ai-strategy-coach": {
+      "phase": "plan",
+      "level": "Dynamic",
+      "createdAt": "2026-04-30",
+      "documents": {
+        "plan": "docs/01-plan/features/ai-strategy-coach.plan.md",
+        "design": null,
+        "analysis": null,
+        "report": null
+      },
+      "matchRate": null,
+      "iteration": 0
+    },
     "trading-analysis-tool": {
       "phase": "archived",
       "level": "Dynamic",
@@ -91,6 +104,13 @@
       "action": "archived",
       "note": "4개 PDCA 문서를 docs/archive/2026-04/trading-analysis-tool/ 으로 이동. _INDEX.md 갱신. activeFeatures 비움.",
       "phase": "archived"
+    },
+    {
+      "timestamp": "2026-04-30",
+      "feature": "ai-strategy-coach",
+      "action": "plan-created",
+      "note": "신규 사이클: 사용자 커스텀 전략 + AI 코치 + 70/30 holdout + iteration 이력. Project v0.5.0.",
+      "phase": "plan"
     }
   ]
 }
