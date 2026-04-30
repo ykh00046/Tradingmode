@@ -1,38 +1,30 @@
 @echo off
-chcp 65001 > nul
 setlocal EnableExtensions
-
-REM ============================================================================
-REM  trading-analysis-tool - first-time setup
-REM  - .venv 생성 + 의존성 설치 + .env 템플릿 복사
-REM  - 두 번째 실행부터는 start.bat 만 사용
-REM ============================================================================
 
 set "ROOT=%~dp0"
 
 echo.
-echo ============================================================================
+echo ============================================================
 echo  TRADINGMODE.LAB - first-time setup
-echo ============================================================================
+echo ============================================================
 echo.
 
-REM --- Python 확인 ---
 where python > nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] Python 이 PATH 에 없습니다. Python 3.11+ 설치 후 다시 실행하세요.
-  echo         https://www.python.org/downloads/
+  echo [ERROR] Python not found in PATH.
+  echo Install Python 3.11+ first: https://www.python.org/downloads/
+  echo.
   pause
   exit /b 1
 )
 
-REM --- venv 생성 ---
 if exist "%ROOT%.venv" (
-  echo [SKIP] .venv 이미 존재
+  echo [SKIP] .venv already exists at %ROOT%.venv
 ) else (
-  echo [1/3] 가상환경 생성...
+  echo [1/3] Creating virtual environment ...
   python -m venv "%ROOT%.venv"
   if errorlevel 1 (
-    echo [ERROR] venv 생성 실패
+    echo [ERROR] venv creation failed.
     pause
     exit /b 1
   )
@@ -40,37 +32,37 @@ if exist "%ROOT%.venv" (
 
 set "PY=%ROOT%.venv\Scripts\python.exe"
 
-REM --- 의존성 설치 ---
-echo [2/3] 의존성 설치 (5~10분 소요)...
+echo.
+echo [2/3] Installing dependencies (this can take 5-10 minutes) ...
 "%PY%" -m pip install --upgrade pip
 "%PY%" -m pip install -r "%ROOT%backend\requirements.txt"
-"%PY%" -m pip install pytest pytest-mock pytest-asyncio
 if errorlevel 1 (
-  echo [WARN] 일부 패키지 설치 실패 — 수동으로 확인 필요
+  echo [WARN] Some packages failed to install. Check the log above.
 )
+"%PY%" -m pip install pytest pytest-mock pytest-asyncio
 
-REM --- .env 생성 ---
 if not exist "%ROOT%.env" (
-  echo [3/3] .env 템플릿 복사...
+  echo.
+  echo [3/3] Creating .env from template ...
   copy "%ROOT%.env.example" "%ROOT%.env" > nul
-  echo        .env 파일이 생성됐습니다. GROQ_API_KEY 를 입력하세요.
+  echo       Edit .env to set GROQ_API_KEY for AI commentary.
 ) else (
-  echo [SKIP] .env 이미 존재
+  echo.
+  echo [SKIP] .env already exists
 )
 
-REM --- pytest 빠른 검증 ---
 echo.
-echo ============================================================================
-echo  pytest 실행 (75 테스트, 약 1.5초)
-echo ============================================================================
+echo ============================================================
+echo  Running pytest (75 tests) ...
+echo ============================================================
 cd /d "%ROOT%backend"
 "%PY%" -m pytest -q
 cd /d "%ROOT%"
 
 echo.
-echo ============================================================================
-echo  setup 완료. 이제 start.bat 으로 실행하세요.
-echo ============================================================================
+echo ============================================================
+echo  Setup done. Run start.bat to launch the app.
+echo ============================================================
 echo.
-endlocal
 pause
+endlocal
