@@ -1,18 +1,20 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": ["trading-analysis-tool"],
-  "primaryFeature": "trading-analysis-tool",
+  "activeFeatures": [],
+  "primaryFeature": null,
   "features": {
     "trading-analysis-tool": {
-      "phase": "completed",
+      "phase": "archived",
       "level": "Dynamic",
       "createdAt": "2026-04-29",
+      "archivedAt": "2026-04-30",
+      "archivedTo": "docs/archive/2026-04/trading-analysis-tool/",
       "documents": {
-        "plan": "docs/01-plan/features/trading-analysis-tool.plan.md",
-        "design": "docs/02-design/features/trading-analysis-tool.design.md",
-        "analysis": "docs/03-analysis/trading-analysis-tool.analysis.md",
-        "report": "docs/04-report/trading-analysis-tool.report.md"
+        "plan": "docs/archive/2026-04/trading-analysis-tool/trading-analysis-tool.plan.md",
+        "design": "docs/archive/2026-04/trading-analysis-tool/trading-analysis-tool.design.md",
+        "analysis": "docs/archive/2026-04/trading-analysis-tool/trading-analysis-tool.analysis.md",
+        "report": "docs/archive/2026-04/trading-analysis-tool/trading-analysis-tool.report.md"
       },
       "matchRate": 99,
       "iteration": 1
@@ -82,6 +84,13 @@
       "action": "report-generated",
       "note": "report-generator: 통합 완료 보고서 생성. v0.5/v2/v3 로드맵 포함.",
       "phase": "completed"
+    },
+    {
+      "timestamp": "2026-04-30",
+      "feature": "trading-analysis-tool",
+      "action": "archived",
+      "note": "4개 PDCA 문서를 docs/archive/2026-04/trading-analysis-tool/ 으로 이동. _INDEX.md 갱신. activeFeatures 비움.",
+      "phase": "archived"
     }
   ]
 }
