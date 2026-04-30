@@ -5,12 +5,12 @@
   "primaryFeature": "ai-strategy-coach",
   "features": {
     "ai-strategy-coach": {
-      "phase": "plan",
+      "phase": "design",
       "level": "Dynamic",
       "createdAt": "2026-04-30",
       "documents": {
         "plan": "docs/01-plan/features/ai-strategy-coach.plan.md",
-        "design": null,
+        "design": "docs/02-design/features/ai-strategy-coach.design.md",
         "analysis": null,
         "report": null
       },
