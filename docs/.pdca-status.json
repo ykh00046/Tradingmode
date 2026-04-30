@@ -5,14 +5,14 @@
   "primaryFeature": "trading-analysis-tool",
   "features": {
     "trading-analysis-tool": {
-      "phase": "act",
+      "phase": "completed",
       "level": "Dynamic",
       "createdAt": "2026-04-29",
       "documents": {
         "plan": "docs/01-plan/features/trading-analysis-tool.plan.md",
         "design": "docs/02-design/features/trading-analysis-tool.design.md",
         "analysis": "docs/03-analysis/trading-analysis-tool.analysis.md",
-        "report": null
+        "report": "docs/04-report/trading-analysis-tool.report.md"
       },
       "matchRate": 99,
       "iteration": 1
@@ -75,6 +75,13 @@
       "action": "iterate-1-completed",
       "note": "pdca-iterator: H-1(브랜딩) + H-2(api.portfolio) + M-1(cache_hit) + M-7(§5.3) + L-2(utcnow) 자동 수정. 95% → 99%. 75/75 PASSED.",
       "phase": "act"
+    },
+    {
+      "timestamp": "2026-04-30",
+      "feature": "trading-analysis-tool",
+      "action": "report-generated",
+      "note": "report-generator: 통합 완료 보고서 생성. v0.5/v2/v3 로드맵 포함.",
+      "phase": "completed"
     }
   ]
 }
