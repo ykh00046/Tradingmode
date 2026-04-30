@@ -1,29 +1,115 @@
 // Portfolio page — holdings, P&L, allocation, performance.
-// Mock portfolio derived deterministically from universe data.
+// Primary path: POST /api/portfolio (backend calculates FX, trend, signals).
+// Fallback (DEMO_MODE or backend unreachable): local synthetic computation.
 
-const { useState: useStateP, useMemo: useMemoP } = React;
+const { useState: useStateP, useMemo: useMemoP, useEffect: useEffectP } = React;
 
 // ─── Mock portfolio holdings ─────────────────────────────────
 // (symbol, qty, avgCost) — avgCost expressed in instrument's native currency
 const MOCK_HOLDINGS = [
-  { symbol: 'BTC/USDT',  qty: 0.42,    avgCost: 58400 },
-  { symbol: 'ETH/USDT',  qty: 4.8,     avgCost: 2780 },
-  { symbol: 'SOL/USDT',  qty: 95,      avgCost: 118 },
-  { symbol: '005930',    qty: 320,     avgCost: 71200 },   // 삼성전자
-  { symbol: '000660',    qty: 42,      avgCost: 162000 },  // SK하이닉스
-  { symbol: '035420',    qty: 28,      avgCost: 215000 },  // NAVER
-  { symbol: '373220',    qty: 8,       avgCost: 445000 },  // LG엔솔
-  { symbol: '247540',    qty: 14,      avgCost: 198000 },  // 에코프로비엠
+  { symbol: 'BTC/USDT',  qty: 0.42,    avgCost: 58400,  market: 'crypto',   currency: 'USDT' },
+  { symbol: 'ETH/USDT',  qty: 4.8,     avgCost: 2780,   market: 'crypto',   currency: 'USDT' },
+  { symbol: 'SOL/USDT',  qty: 95,      avgCost: 118,    market: 'crypto',   currency: 'USDT' },
+  { symbol: '005930',    qty: 320,     avgCost: 71200,  market: 'kr_stock', currency: 'KRW'  }, // 삼성전자
+  { symbol: '000660',    qty: 42,      avgCost: 162000, market: 'kr_stock', currency: 'KRW'  }, // SK하이닉스
+  { symbol: '035420',    qty: 28,      avgCost: 215000, market: 'kr_stock', currency: 'KRW'  }, // NAVER
+  { symbol: '373220',    qty: 8,       avgCost: 445000, market: 'kr_stock', currency: 'KRW'  }, // LG엔솔
+  { symbol: '247540',    qty: 14,      avgCost: 198000, market: 'kr_stock', currency: 'KRW'  }, // 에코프로비엠
 ];
 
-const FX_KRW_PER_USD = 1382.40; // single FX assumption used across this page
+// Fallback FX assumption used only when DEMO_MODE or backend is unavailable.
+const FX_KRW_PER_USD_FALLBACK = 1382.40;
+
+// Build the holdings array expected by POST /api/portfolio.
+function buildPortfolioRequest() {
+  return {
+    holdings: MOCK_HOLDINGS.map((h) => ({
+      market: h.market,
+      symbol: h.symbol.replace('/', ''),
+      quantity: h.qty,
+      avg_price: h.avgCost,
+      currency: h.currency,
+    })),
+    base_currency: 'KRW',
+  };
+}
 
 function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
   const [period, setPeriod] = useStateP('3M'); // 1M | 3M | 6M | 1Y | ALL
   const [allocBy, setAllocBy] = useStateP('symbol'); // symbol | market
+  // Backend response (null = not yet loaded / DEMO_MODE fallback)
+  const [beData, setBeData] = useStateP(null);   // PortfolioAnalysisResponse | null
+  const [beError, setBeError] = useStateP(null); // string | null
+  const [beLoading, setBeLoading] = useStateP(false);
+
+  // Derived FX rate from backend response (USD/KRW), fallback to hardcoded value.
+  const fxKrwPerUsd = useMemoP(() => {
+    if (beData && beData.fx_rates) {
+      const usdKrw = beData.fx_rates['USD/KRW'] || beData.fx_rates['USDKRW'];
+      if (usdKrw && usdKrw.rate) return usdKrw.rate;
+    }
+    return FX_KRW_PER_USD_FALLBACK;
+  }, [beData]);
+
+  // Call backend on mount (real mode only).
+  useEffectP(() => {
+    if (window.DEMO_MODE) return; // keep pure local path in demo mode
+    setBeLoading(true);
+    window.api.portfolio(buildPortfolioRequest(), { timeout: 20000 })
+      .then((resp) => {
+        setBeData(resp);
+        setBeError(null);
+      })
+      .catch((err) => {
+        setBeError((err && err.message) || String(err));
+        setBeData(null);
+      })
+      .finally(() => setBeLoading(false));
+  }, []); // run once on mount; refresh via "⟳ 가격 동기화" button
+
+  // Refresh handler wired to the sync button.
+  function handleSync() {
+    if (window.DEMO_MODE) return;
+    setBeLoading(true);
+    window.api.portfolio(buildPortfolioRequest(), { timeout: 20000 })
+      .then((resp) => { setBeData(resp); setBeError(null); })
+      .catch((err) => { setBeError((err && err.message) || String(err)); })
+      .finally(() => setBeLoading(false));
+  }
 
   // ─── Build holdings rows ─────────────────────────────────────
+  // When backend data is available use it; otherwise synthesise locally.
   const rows = useMemoP(() => {
+    if (beData && beData.holdings_analysis && beData.holdings_analysis.length > 0) {
+      // Map backend HoldingAnalysisResponse → row shape expected by the rest of the UI.
+      return beData.holdings_analysis.map((h) => {
+        const symbolKey = h.symbol.includes('/') ? h.symbol
+          : MOCK_HOLDINGS.find((m) => m.symbol.replace('/', '') === h.symbol)?.symbol || h.symbol;
+        const inst = data[symbolKey];
+        const candles = inst ? inst.candles : [];
+        const last = candles[candles.length - 1];
+        const prev = candles[candles.length - 2];
+        const dayChg = last && prev ? (last.c - prev.c) / prev.c : 0;
+        const mockH = MOCK_HOLDINGS.find((m) => m.symbol.replace('/', '') === h.symbol || m.symbol === symbolKey);
+        return {
+          symbol: symbolKey,
+          qty: h.quantity,
+          avgCost: h.avg_price,
+          meta: inst ? inst.meta : { symbol: symbolKey, name: h.symbol, market: h.market, currency: h.currency, exch: h.market === 'crypto' ? 'BINANCE' : 'KRX' },
+          last: h.current_price_local,
+          prev: last && prev ? prev.c : h.current_price_local,
+          dayChg,
+          value: h.market_value,
+          cost: h.cost_basis,
+          pnl: h.pnl,
+          pnlPct: h.pnl_pct / 100,
+          candles,
+          trend: h.trend,
+        };
+      });
+    }
+    // Fallback: local synthetic computation (DEMO_MODE or backend unavailable).
+    const FX = fxKrwPerUsd;
     return MOCK_HOLDINGS.map((h) => {
       const inst = data[h.symbol];
       if (!inst) return null;
@@ -31,7 +117,7 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
       const prev = inst.candles[inst.candles.length - 2];
       const dayChg = (last.c - prev.c) / prev.c;
       const cur = inst.meta.currency;
-      const fx = cur === 'KRW' ? 1 : FX_KRW_PER_USD; // value everything in KRW
+      const fx = cur === 'KRW' ? 1 : FX;
       const value = h.qty * last.c * fx;
       const cost = h.qty * h.avgCost * fx;
       const pnl = value - cost;
@@ -42,16 +128,29 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
         last: last.c,
         prev: prev.c,
         dayChg,
-        value,    // KRW
-        cost,     // KRW
-        pnl,      // KRW
+        value,
+        cost,
+        pnl,
         pnlPct,
         candles: inst.candles,
+        trend: null,
       };
     }).filter(Boolean);
-  }, [data]);
+  }, [beData, data, fxKrwPerUsd]);
 
+  // Backend totals (use directly when available).
   const totals = useMemoP(() => {
+    if (beData && beData.holdings_analysis && beData.holdings_analysis.length > 0) {
+      const dayPnl = rows.reduce((a, r) => a + r.value * r.dayChg / (1 + r.dayChg), 0);
+      return {
+        value: beData.total_market_value,
+        cost: beData.total_cost_basis,
+        pnl: beData.total_pnl,
+        pnlPct: beData.total_pnl_pct / 100,
+        dayPnl,
+        dayPct: beData.total_market_value > 0 ? dayPnl / beData.total_market_value : 0,
+      };
+    }
     const value = rows.reduce((a, r) => a + r.value, 0);
     const cost  = rows.reduce((a, r) => a + r.cost, 0);
     const dayPnl = rows.reduce((a, r) => a + r.value * r.dayChg / (1 + r.dayChg), 0);
@@ -63,7 +162,7 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
       dayPnl,
       dayPct: value > 0 ? dayPnl / value : 0,
     };
-  }, [rows]);
+  }, [rows, beData]);
 
   // Sort holdings by value desc for table + treemap
   const sortedRows = useMemoP(() => [...rows].sort((a, b) => b.value - a.value), [rows]);
@@ -155,12 +254,15 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
             <span className="muted">· 통합 평가 통화</span>
             <span className="mono">KRW</span>
             <span className="muted">· FX</span>
-            <span className="mono">USD/KRW {fmt.price(FX_KRW_PER_USD, 'KRW')}</span>
+            <span className="mono">USD/KRW {fmt.price(fxKrwPerUsd, 'KRW')}</span>
+            {beData && <span className="mono muted"> · 백엔드 연동</span>}
+            {beLoading && <span className="mono muted"> · 동기화 중…</span>}
+            {beError && !beData && <span className="mono" style={{color:'oklch(0.65 0.20 25)'}}> · 로컬 계산 (백엔드 연결 안 됨)</span>}
           </div>
         </div>
         <div className="pf-actions">
           <button className="pf-btn ghost">＋ 수동 거래 추가</button>
-          <button className="pf-btn">⟳ 가격 동기화</button>
+          <button className="pf-btn" onClick={handleSync} disabled={beLoading}>{beLoading ? '동기화 중…' : '⟳ 가격 동기화'}</button>
         </div>
       </div>
 

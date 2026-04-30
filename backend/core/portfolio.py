@@ -147,7 +147,7 @@ def _analyze_holding(
         start=as_of - pd.Timedelta(days=lookback_days),
         end=as_of,
     )
-    df = data_loader.fetch(req)
+    df, _ = data_loader.fetch(req)
     df = indicators.compute(df)
 
     last_close_local = float(df["close"].iloc[-1])
@@ -197,7 +197,7 @@ def analyze(
     analysis — the returned ``holdings_analysis`` may have fewer entries than
     the input portfolio. This keeps a single bad ticker from breaking the page.
     """
-    as_of = as_of or pd.Timestamp.utcnow().normalize()
+    as_of = as_of or pd.Timestamp.now(tz='UTC').normalize()
     fx_rates = _resolve_fx_rates(portfolio, as_of)
     base_currency = portfolio.base_currency
 

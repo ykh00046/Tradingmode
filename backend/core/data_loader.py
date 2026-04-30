@@ -22,8 +22,11 @@ def _route(req: FetchRequest) -> pd.DataFrame:
     raise DataSourceError(f"unknown market: {req.market}")
 
 
-def fetch(req: FetchRequest) -> pd.DataFrame:
-    """Return OHLCV for the request, hitting the cache first.
+def fetch(req: FetchRequest) -> tuple[pd.DataFrame, bool]:
+    """Return ``(df, cache_hit)`` for the request, hitting the cache first.
+
+    ``cache_hit`` is ``True`` when the data was served from a parquet file
+    without calling the upstream adapter.
 
     Raises
     ------
@@ -49,9 +52,9 @@ def fetch(req: FetchRequest) -> pd.DataFrame:
             req.interval.value,
             len(cached),
         )
-        return cached
+        return cached, True
 
     log.info("cache miss: %s/%s/%s — fetching", req.market.value, req.symbol, req.interval.value)
     df = _route(req)
     cache.save_ohlcv(path, df)
-    return df
+    return df, False

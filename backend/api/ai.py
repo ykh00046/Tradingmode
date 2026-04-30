@@ -45,7 +45,7 @@ def post_ai_explain(req: schemas.AIExplainRequest) -> schemas.AICommentaryRespon
         start=ts - pd.Timedelta(days=120),
         end=ts + pd.Timedelta(days=1),
     )
-    df = data_loader.fetch(fetch_req)
+    df, _ = data_loader.fetch(fetch_req)
     df = core_indicators.compute(df)
 
     signal = Signal(

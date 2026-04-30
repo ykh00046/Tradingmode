@@ -62,4 +62,4 @@ def patch_fetch(mocker, synthetic_df) -> None:
         "api.backtest.data_loader.fetch",
     ]
     for t in targets:
-        mocker.patch(t, return_value=synthetic_df)
+        mocker.patch(t, return_value=(synthetic_df, True))

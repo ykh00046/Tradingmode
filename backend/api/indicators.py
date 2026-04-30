@@ -26,7 +26,7 @@ def get_indicators(
         start=converters.ms_to_ts(start),
         end=converters.ms_to_ts(end),
     )
-    df = data_loader.fetch(req)
+    df, cache_hit = data_loader.fetch(req)
     df = core_indicators.compute(df)
     return schemas.IndicatorsResponse(
         market=market,
@@ -34,5 +34,5 @@ def get_indicators(
         interval=interval,
         candles=converters.df_to_candles(df),
         indicators=converters.df_indicator_columns(df),
-        cached=True,
+        cached=cache_hit,
     )

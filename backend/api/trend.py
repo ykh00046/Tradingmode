@@ -26,7 +26,7 @@ def get_trend(
         start=converters.ms_to_ts(start),
         end=converters.ms_to_ts(end),
     )
-    df = data_loader.fetch(req)
+    df, _ = data_loader.fetch(req)
     df = core_indicators.compute(df)
     state = core_trend.classify(df)
     return converters.trend_to_response(state, market, symbol, df)

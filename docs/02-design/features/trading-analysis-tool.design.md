@@ -1105,22 +1105,28 @@ useEffect(() => {
                               → CSV 업로드 또는 MOCK_HOLDINGS
                               → api.portfolio() POST → 집계 표시
 
-[4] 백테스팅 (Chart 탭 내 패널)
-    Chart 화면 우측 패널에서 전략 선택 → api.backtest() POST
+[3] 백테스팅 (별도 03 탭)
+    BacktestPage → 전략 선택 → api.backtest() POST
         → equity curve + 통계 표시
+        → 현재 종목 컨텍스트 공유 (instrument prop)
+
+[4] 포트폴리오
+    PortfolioPage → api.portfolio() POST → 집계 표시
 ```
 
 ### 5.3 React 페이지 컴포넌트
 
-| Page | 핵심 컴포넌트 | API 호출 |
-|------|--------------|---------|
-| `app.jsx` | `TopBar`(시세 테이프), `Watchlist`(KR/CRYPTO 필터, 미니 스파크), `DataStatusBar`, 탭 라우팅 | `api.marketSnapshot()` (30s 폴링) |
-| `charts.jsx` (ChartPage) | 캔들 차트(SVG), MA 오버레이, RSI/MACD 서브차트, 드로잉 도구(trend/fib), 줌 프리셋(1M/3M/6M/1Y), **Backtest 패널** (전략·cash·commission 선택 후 실행) | `api.ohlcv`, `api.indicators`, `api.trend`, `api.signals`, `api.backtest` |
-| `signals-page.jsx` (SignalsPage) | BUY/SELL 필터, 시장 필터, recency 슬라이더, 신호 리스트, **AI 해설 expander** | `api.signals` (universe 전체), `api.aiExplain` |
-| `portfolio-page.jsx` (PortfolioPage) | CSV 업로드, 보유 테이블(추세·손익·비중), treemap, 성과 차트(1M/3M/6M/1Y/ALL) | `api.portfolio` |
+> **백테스팅 위치 결정 (v1 채택)**: 별도 **03 백테스팅** 탭으로 분리 (FR-13 "Chart 페이지 또는 별도" 중 별도 탭 선택).
+> 이유: 화면 활용도가 높고, 장기 기간 결과 표(equity curve + 통계)를 넓게 표시하기 유리하다.
+> 현재 종목 컨텍스트는 `instrument` prop으로 BacktestPage에 전달하므로 차트와 동기화된다.
 
-> **백테스팅 위치 결정**: 별도 페이지가 아닌 `charts.jsx` 내부 우측 패널로 배치 (FR-13 "Chart 페이지 또는 별도" 중 통합 선택).
-> 이유: 백테스트는 차트 컨텍스트(현재 종목/타임프레임)를 그대로 사용, 시각적 비교 용이.
+| Page | 탭 번호 | 핵심 컴포넌트 | API 호출 |
+|------|:------:|--------------|---------|
+| `app.jsx` | — | `TopBar`(시세 테이프), `Watchlist`(KR/CRYPTO 필터, 미니 스파크), `DataStatusBar`, 4탭 라우팅 | `api.marketSnapshot()` (30s 폴링) |
+| `charts.jsx` (ChartPage) | 01 | 캔들 차트(SVG), MA 오버레이, RSI/MACD 서브차트, 드로잉 도구(trend/fib), 줌 프리셋(1M/3M/6M/1Y) | `api.ohlcv`, `api.indicators`, `api.trend`, `api.signals` |
+| `signals-page.jsx` (SignalsPage) | 02 | BUY/SELL 필터, 시장 필터, recency 슬라이더, 신호 리스트, **AI 해설 expander** (llama-3.3-70b-versatile) | `api.signals` (universe 전체), `api.aiExplain` |
+| `backtest.jsx` (BacktestPage) | 03 | 전략 선택(MA Cross), cash/commission 설정, equity curve, 통계 테이블(수익률·MDD·샤프·승률) | `api.backtest` |
+| `portfolio-page.jsx` (PortfolioPage) | 04 | 보유 테이블(추세·손익·비중), 도넛 배분, 성과 곡선(1M/3M/6M/1Y/ALL), 백엔드 FX/trend 연동 | `api.portfolio` |
 
 ### 5.4 포트폴리오 페이지 레이아웃
 

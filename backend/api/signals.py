@@ -26,7 +26,7 @@ def get_signals(
         start=converters.ms_to_ts(start),
         end=converters.ms_to_ts(end),
     )
-    df = data_loader.fetch(req)
+    df, _ = data_loader.fetch(req)
     df = core_indicators.compute(df)
     detected = core_signals.detect_all(df)
     return schemas.SignalsResponse(

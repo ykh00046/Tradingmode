@@ -43,10 +43,11 @@ def test_cache_miss_calls_adapter_and_saves(mocker, tmp_path) -> None:
     bin_dl = mocker.patch("core.data_loader.binance_adapter.download", return_value=fake)
     krx_dl = mocker.patch("core.data_loader.krx_adapter.download")
 
-    result = data_loader.fetch(_make_request(Market.CRYPTO))
+    result, cache_hit = data_loader.fetch(_make_request(Market.CRYPTO))
 
     assert bin_dl.call_count == 1
     assert krx_dl.call_count == 0
+    assert cache_hit is False
     pd.testing.assert_frame_equal(result, fake)
 
 
@@ -59,8 +60,9 @@ def test_cache_hit_skips_adapter(mocker, tmp_path) -> None:
     data_loader.fetch(_make_request(Market.CRYPTO))
     bin_dl.reset_mock()
 
-    data_loader.fetch(_make_request(Market.CRYPTO))
+    _, cache_hit = data_loader.fetch(_make_request(Market.CRYPTO))
     assert bin_dl.call_count == 0
+    assert cache_hit is True
 
 
 def test_routes_kr_market_to_krx_adapter(mocker, tmp_path) -> None:

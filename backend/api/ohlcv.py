@@ -27,11 +27,11 @@ def get_ohlcv(
         start=converters.ms_to_ts(start),
         end=converters.ms_to_ts(end),
     )
-    df = data_loader.fetch(req)
+    df, cache_hit = data_loader.fetch(req)
     return schemas.OHLCVResponse(
         market=market,
         symbol=symbol,
         interval=interval,
         candles=converters.df_to_candles(df),
-        cached=True,                                # We always go through the cache layer; "cached" here means served from cache or freshly stored
+        cached=cache_hit,
     )

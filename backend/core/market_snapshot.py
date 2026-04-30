@@ -36,7 +36,7 @@ def _fdr_index_quote(ticker: str, *, fallback: IndexQuote) -> IndexQuote:
         import FinanceDataReader as fdr                                      # type: ignore
 
         # 7 days back gives us at least one trading day's worth even on a Monday.
-        end = pd.Timestamp.utcnow()
+        end = pd.Timestamp.now(tz='UTC')
         start = end - pd.Timedelta(days=7)
         df = fdr.DataReader(ticker, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
         if df is None or len(df) < 2:
@@ -55,7 +55,7 @@ def _btc_quote() -> IndexQuote:
     """Latest BTC/USDT spot via Binance daily candles."""
     fallback = IndexQuote(value=0.0, change_pct=0.0)
     try:
-        end = pd.Timestamp.utcnow()
+        end = pd.Timestamp.now(tz='UTC')
         start = end - pd.Timedelta(days=3)
         df = binance_adapter.download("BTCUSDT", "1d", start, end)
         if df is None or len(df) < 2:
@@ -93,7 +93,7 @@ def fetch_snapshot(*, force_refresh: bool = False) -> MarketSnapshot:
         btc=_btc_quote(),
         dxy=_fdr_index_quote("DX-Y.NYB", fallback=IndexQuote(0.0, 0.0)),
         vix=_fdr_index_quote("VIX", fallback=IndexQuote(0.0, 0.0)),
-        timestamp=pd.Timestamp.utcnow(),
+        timestamp=pd.Timestamp.now(tz='UTC'),
     )
 
     _cache["snapshot"] = (now, snapshot)

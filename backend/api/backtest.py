@@ -20,7 +20,7 @@ def post_backtest(req: schemas.BacktestRequest) -> schemas.BacktestResultRespons
         start=converters.ms_to_ts(req.start),
         end=converters.ms_to_ts(req.end),
     )
-    df = data_loader.fetch(fetch_req)
+    df, _ = data_loader.fetch(fetch_req)
     result = core_backtest.run(
         df,
         strategy=req.strategy,

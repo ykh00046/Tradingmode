@@ -155,7 +155,7 @@ def _commentary_from_dict(
         detail=str(payload["detail"]),
         confidence=payload["confidence"],                                    # type: ignore[arg-type]
         model=model,
-        generated_at=pd.Timestamp.utcnow(),
+        generated_at=pd.Timestamp.now(tz='UTC'),
     )
 
 

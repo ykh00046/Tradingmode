@@ -40,9 +40,8 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
   const sells = filtered.length - buys;
   const last7 = filtered.filter((s) => s.ageDays <= 7).length;
 
-  // AI explainer — calls Claude (Haiku 4.5 via window.claude)
-  // In the real product this is Groq llama-3.3-70b-versatile; here we use the
-  // prototype helper that ships in the canvas.
+  // AI explainer — calls Groq llama-3.3-70b-versatile via window.api.aiExplain.
+  // Demo mode synthesises a plausible response so the UI is testable without a backend.
   function keyOf(s) {
     return s.symbol + '|' + s.kind + '|' + s.t;
   }
@@ -180,7 +179,7 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
             <span className="ai-dot" />
             {aiEnabled ? 'ON' : 'OFF'}
           </button>
-          <span className="sp-model-tag mono muted">claude-haiku-4-5</span>
+          <span className="sp-model-tag mono muted">{aiCache[expandedKey]?.data?.model || 'llama-3.3-70b-versatile'}</span>
         </div>
       </div>
 
@@ -323,7 +322,7 @@ function AIExplainer({ signal, ai, aiEnabled, onRetry, onJumpChart }) {
         <div className="ai-output">
           <div className="ai-output-head">
             <span className="ai-section-label">AI 해설</span>
-            <span className="ai-meta mono muted">claude-haiku-4-5 · prototype</span>
+            <span className="ai-meta mono muted">{data?.model || 'llama-3.3-70b-versatile'} · Groq</span>
             {state === 'ready' && data?.confidence && (
               <span className={'ai-conf ai-conf-' + data.confidence}>신뢰도 {data.confidence}</span>
             )}

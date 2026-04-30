@@ -5,7 +5,7 @@
   "primaryFeature": "trading-analysis-tool",
   "features": {
     "trading-analysis-tool": {
-      "phase": "check",
+      "phase": "act",
       "level": "Dynamic",
       "createdAt": "2026-04-29",
       "documents": {
@@ -14,8 +14,8 @@
         "analysis": "docs/03-analysis/trading-analysis-tool.analysis.md",
         "report": null
       },
-      "matchRate": 95,
-      "iteration": 0
+      "matchRate": 99,
+      "iteration": 1
     }
   },
   "pipeline": {
@@ -68,6 +68,13 @@
       "action": "validator-fixes-v0.4.1",
       "note": "검증 78% → Streamlit 잔존 정리(C-1~C-3), 에러 매핑 표 + 폴링/취소/정적호스팅/응답 Pydantic 스키마 보강. 목표 90%+.",
       "phase": "design"
+    },
+    {
+      "timestamp": "2026-04-30",
+      "feature": "trading-analysis-tool",
+      "action": "iterate-1-completed",
+      "note": "pdca-iterator: H-1(브랜딩) + H-2(api.portfolio) + M-1(cache_hit) + M-7(§5.3) + L-2(utcnow) 자동 수정. 95% → 99%. 75/75 PASSED.",
+      "phase": "act"
     }
   ]
 }

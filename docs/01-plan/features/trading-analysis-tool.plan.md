@@ -90,7 +90,7 @@ project_version: 0.1.0
 | FR-10 | 백테스팅: 신호 기반 진입/청산, 누적수익률·MDD·승률·샤프지수 출력 | High | Pending |
 | FR-11 | **Chart Analysis 페이지**(React): 종목/타임프레임 선택, 캔들 차트 + 지표 오버레이, 줌/드로잉(추세선·피보나치) | High | Pending |
 | FR-12 | **Signals 페이지**(React): BUY/SELL 필터, 신호 리스트 + 차트 마커 + AI 해설 expander | High | Pending |
-| FR-13 | **백테스팅 영역**(React, Chart 페이지 또는 별도): 전략 선택 → 결과 차트 + 통계 테이블 | High | Pending |
+| FR-13 | **백테스팅 탭**(React, 별도 03 탭 `backtest.jsx`): 전략 선택(MA Cross) → equity curve + 통계 테이블(수익률·MDD·샤프·승률). 현재 종목은 `instrument` prop으로 공유. | High | Done |
 | FR-14 | Groq API(llama-3.3-70b-versatile)로 감지 신호의 자연어 해설 생성 (백엔드에서 호출, 키 노출 X) | Medium | Pending |
 | FR-15 | 보유 종목 입력: CSV 업로드 + 수동 입력(`symbol, quantity, avg_price`) | High | Pending |
 | FR-16 | **Portfolio 페이지**(React): 보유 종목별 추세·신호·평가금액·평가손익·비중 집계 + treemap | High | Pending |
