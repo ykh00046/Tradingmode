@@ -5,16 +5,16 @@
   "primaryFeature": "trading-analysis-tool",
   "features": {
     "trading-analysis-tool": {
-      "phase": "do",
+      "phase": "check",
       "level": "Dynamic",
       "createdAt": "2026-04-29",
       "documents": {
         "plan": "docs/01-plan/features/trading-analysis-tool.plan.md",
         "design": "docs/02-design/features/trading-analysis-tool.design.md",
-        "analysis": null,
+        "analysis": "docs/03-analysis/trading-analysis-tool.analysis.md",
         "report": null
       },
-      "matchRate": null,
+      "matchRate": 95,
       "iteration": 0
     }
   },
