@@ -207,7 +207,7 @@ C:/X/new/
 ### 7.1 Existing Project Conventions
 
 이전 사이클의 컨벤션 그대로 유지:
-- [x] Python 3.11+, pandas-ta 0.4.x
+- [x] Python 3.11+, **pandas-only indicators** (no pandas-ta — baseline 정리됨)
 - [x] FastAPI + Pydantic v2
 - [x] React 18 (CDN), Babel standalone
 - [x] pytest (75 tests baseline)

@@ -221,10 +221,24 @@ class CoachResponse:
 
 # === Iteration 이력 ===
 
+# === 빌트인 지표 메타데이터 ===
+
+@dataclass(frozen=True)
+class BuiltinIndicator:
+    """UI 자동완성 + AI 코치 빌트인 풀에 노출되는 지표 메타데이터."""
+    name: str                                    # 사람용 이름 (예: "RSI")
+    columns: list[str]                           # df 에 등장하는 컬럼명 (예: ["RSI_14"])
+    params: dict                                 # 기본 파라미터 (예: {"period": 14})
+    description: str                             # 한국어 1줄 설명
+    category: Literal["momentum", "trend", "volatility", "volume"]
+
+
+# === Iteration 이력 ===
+
 @dataclass(frozen=True)
 class IterationEntry:
     """단일 백테스트 시도 (parquet 한 행에 대응)."""
-    iteration_id: str                            # uuid4 짧게
+    iteration_id: str                            # uuid4().hex (32자 full) — collision 방어
     symbol: str
     interval: str
     attempt_no: int                              # 세션 내 번호
@@ -250,13 +264,15 @@ class IterationEntry:
 # 신규 모델은 모두 BaseModel — JSON-friendly 형식
 
 class TradingCostsModel(BaseModel):
-    commission_bps: float = Field(default=5.0, ge=0, lt=1000)
-    slippage_bps: float = Field(default=2.0, ge=0, lt=1000)
-    kr_sell_tax_bps: float = Field(default=18.0, ge=0, lt=1000)
+    """현실적 BPS 상한: commission/slippage 1%, KR 매도세 0.5%."""
+    commission_bps: float = Field(default=5.0, ge=0, le=100)     # 0~1%
+    slippage_bps: float = Field(default=2.0, ge=0, le=100)       # 0~1%
+    kr_sell_tax_bps: float = Field(default=18.0, ge=0, le=50)    # 0~0.5%
     apply_kr_tax: bool = True
 
 
 class StrategyDefModel(BaseModel):
+    """사용자 룰 표현식 길이는 MAX_STRATEGY_RULES env 로 추가 제한 (and/or 토큰 수)."""
     name: str = Field(min_length=1, max_length=80)
     buy_when: str = Field(min_length=1, max_length=500)
     sell_when: str = Field(min_length=1, max_length=500)
@@ -324,6 +340,43 @@ class TrendSeriesPoint(BaseModel):
 class TrendResponseExt(TrendResponse):
     """기존 TrendResponse + series=true 일 때 series 필드 추가."""
     series: list[TrendSeriesPoint] | None = None
+
+
+class BuiltinIndicatorModel(BaseModel):
+    name: str
+    columns: list[str]
+    params: dict = Field(default_factory=dict)
+    description: str
+    category: Literal["momentum", "trend", "volatility", "volume"]
+
+
+class StrategyBuiltinsResponse(BaseModel):
+    """GET /api/strategy/builtins 응답."""
+    indicators: list[BuiltinIndicatorModel]
+    operators: list[str]                            # ["+", "-", "*", "/", "<", "<=", ...]
+    helpers: list[str]                              # ["abs", "min", "max", "mean", "prev"]
+
+
+class IterationEntryModel(BaseModel):
+    """GET /api/strategy/iterations 응답의 한 행. timestamp 만 unix ms."""
+    iteration_id: str
+    symbol: str
+    interval: str
+    attempt_no: int
+    strategy_def_json: str
+    is_total_return: float
+    oos_total_return: float | None                 # OOS 부족 시 None
+    is_sharpe: float
+    oos_sharpe: float | None
+    is_mdd: float
+    oos_mdd: float | None
+    is_win_rate: float
+    is_oos_gap_pct: float | None
+    overfit_warning: bool
+    optimization_goal: str
+    coach_diagnosis: str | None
+    applied_recommendation: str | None
+    timestamp: int                                  # unix ms
 ```
 
 ### 3.3 parquet 이력 스키마
@@ -373,24 +426,44 @@ data/_iterations/{symbol_safe}_{interval}.parquet
 import ast
 import pandas as pd
 
-# 화이트리스트: 산술/비교/논리/시프트/통계 함수
-WHITELISTED_TOKENS: frozenset[str] = frozenset({
-    "and", "or", "not",
-    "abs", "min", "max", "mean",
-    "shift",          # df.shift(N) 대응 — eval 컨텍스트에서 prev_N(col, n) 헬퍼로 노출
-    "True", "False",
-    # 비교/산술 연산자는 AST 노드 레벨에서 화이트리스트
+# 허용 함수 (Call 노드의 함수명)
+ALLOWED_FUNCTIONS: frozenset[str] = frozenset({
+    "abs", "min", "max", "mean", "prev",   # prev(col, n) = col.shift(n)
 })
+
+# 허용 boolean 상수
+ALLOWED_CONSTANTS: frozenset[str] = frozenset({"True", "False"})
+
+# 허용 AST 노드 타입 (이 외에는 모두 거부)
+ALLOWED_NODE_TYPES: tuple = (
+    ast.Expression, ast.Name, ast.Constant, ast.Load,
+    ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
+    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+    ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+    ast.Call,
+)
+
+# 명시적 거부 노드 (가독성용 — ALLOWED_NODE_TYPES 외이면 자동 거부)
+FORBIDDEN_NODE_TYPES: tuple = (
+    ast.Attribute, ast.Subscript, ast.Lambda, ast.ListComp, ast.SetComp,
+    ast.DictComp, ast.GeneratorExp, ast.IfExp, ast.Starred,
+    ast.JoinedStr, ast.FormattedValue, ast.Yield, ast.YieldFrom, ast.Await,
+    ast.NamedExpr,                              # walrus :=
+    ast.Import, ast.ImportFrom,
+)
 
 
 def validate_expression(expr: str, allowed_columns: set[str]) -> None:
     """
     AST 파싱하여 다음만 허용:
-    - Name 노드: allowed_columns 또는 WHITELISTED_TOKENS 또는 알려진 헬퍼 함수
-    - 연산자: +,-,*,/,//,%,**, <,<=,==,!=,>,>=, and,or,not
-    - Constant: int, float, bool
-    - Call 노드: allowed 함수만 (abs, min, max, mean, prev)
-    위반 시 InvalidStrategyError raise.
+    - 노드 타입: ALLOWED_NODE_TYPES (외에는 InvalidStrategyError)
+    - Name: allowed_columns ∪ ALLOWED_FUNCTIONS ∪ ALLOWED_CONSTANTS
+    - Call.func: ALLOWED_FUNCTIONS 의 식별자 (Name 노드)
+    - Constant: int, float, bool 만 (str 거부)
+    위반 시 InvalidStrategyError(message, details={'token': ..., 'reason': ...}).
+
+    추가 검증:
+    - and/or 토큰 수 합산 ≤ MAX_STRATEGY_RULES (env, 기본 10)
     """
 
 
@@ -400,9 +473,16 @@ def evaluate_rules(
     sell_when: str,
 ) -> tuple[pd.Series, pd.Series]:
     """
-    df 의 indicator 컬럼 + 헬퍼(prev) 사용 가능.
-    pandas.eval(parser='pandas', engine='python') + 사전 AST 검증.
-    반환: (entry_signal: bool Series, exit_signal: bool Series), df 인덱스와 동일.
+    df 의 indicator 컬럼 + ALLOWED_FUNCTIONS 사용 가능.
+
+    실행 정책:
+      1. validate_expression(buy_when, set(df.columns)) — AST 화이트리스트 통과
+      2. local_dict = {col: df[col] for col in df.columns} ∪ helper functions
+      3. **engine='numexpr' 우선**, NumExpr 미지원 노드(Call) 만 'python' fallback
+      4. pandas.eval(buy_when, parser='pandas', engine=..., local_dict=local_dict)
+      5. 결과를 bool Series 로 강제 캐스팅, 인덱스는 df 와 동일
+
+    반환: (entry: bool Series, exit: bool Series).
     """
 ```
 
@@ -412,26 +492,58 @@ def evaluate_rules(
 def split_70_30(df: pd.DataFrame, ratio: float = 0.7) -> tuple[pd.DataFrame, pd.DataFrame]:
     """시간순 split. df.iloc[:n], df.iloc[n:].
 
-    경계 처리: indicator 워밍업 기간(SMA_120 → 120봉)을 IS 시작 부분에 포함시켜
-    OOS 첫 봉부터 모든 지표가 valid. df.iloc[:n+warmup] 으로 IS 확장 가능 (옵션).
-    기본: 단순 비율 분할.
+    **중요 — indicator 계산 순서**:
+      1. `data_loader.fetch(req)` 로 전체 OHLCV 확보
+      2. `indicators.compute(df)` 로 *전체* df 에 지표 계산 (split 이전!)
+      3. 그 다음 `split_70_30(df_with_indicators)` 호출
+      4. OOS 첫 봉의 SMA_120/MACD 등은 IS 마지막 120봉을 사용 → 자동 valid
+
+    OOS 봉 부족 (< 30) 시 호출자가 graceful 처리: IS 결과만 반환, OOS=None.
     """
 ```
 
 #### `core.strategy_engine.apply_trading_costs`
 
 ```python
-def apply_trading_costs(
-    costs: TradingCosts,
-    market: Market,
-) -> float:
+def apply_trading_costs(costs: TradingCosts, market: Market) -> float:
     """backtesting.py 는 단일 commission 만 받음.
     왕복 BPS 합산 → 분수로 환산:
         total_bps = commission + slippage*2  (slippage는 진입+청산 모두)
-        if market == KR_STOCK and apply_kr_tax: total_bps += kr_sell_tax  (매도 시 1회)
+        if market == KR_STOCK and costs.apply_kr_tax: total_bps += kr_sell_tax  (매도 시 1회)
     return total_bps / 10000
     """
 ```
+
+> §4.1 표의 시그니처도 본 함수 정의와 동일: `apply_trading_costs(costs, market) -> float`.
+
+#### `core.strategy_coach.recommend`
+
+```python
+def recommend(req: CoachRequest, model: str | None = None) -> CoachResponse:
+    """
+    사용 모델은 인자 > env > 디폴트 순:
+        model = model or os.environ.get("STRATEGY_COACH_MODEL", "llama-3.3-70b-versatile")
+
+    캐시 키 (sha256):
+        payload = json.dumps({
+            "strategy": req.strategy.model_dump(),
+            "is_summary": {                          # equity_curve / trades 제외
+                "total_return": req.is_result.total_return,
+                "annual_return": req.is_result.annual_return,
+                "max_drawdown": req.is_result.max_drawdown,
+                "win_rate": req.is_result.win_rate,
+                "sharpe_ratio": req.is_result.sharpe_ratio,
+                "num_trades": req.is_result.num_trades,
+            },
+            "goal": req.strategy.optimization_goal,
+            "model": model,
+        }, sort_keys=True)                          # ← 결정성 보장
+        cache_key = hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    동일 키 재호출 시 LLM 호출 0회. collision 시 마지막 쓰기 우선.
+    """
+```
+
 
 #### `core.strategy_coach.build_prompt`
 
@@ -462,6 +574,20 @@ def apply_trading_costs(
 ```
 
 User 프롬프트는 구조화 JSON 으로 strategy 정의 + IS 결과 + 목표 + 빌트인 목록 + 직전 시도들의 stats 요약 전달.
+
+**Prompt injection 방어** — 사용자 expression 은 *문자열 값* 으로만 JSON 에 삽입, 시스템 프롬프트 내에 변수 치환(`{{user_rule}}`) 절대 X:
+
+```python
+user_message = json.dumps({
+    "strategy": req.strategy.model_dump(),         # buy_when/sell_when 모두 string value
+    "is_result_summary": {...},                     # 위 캐시 키와 동일 5스칼라
+    "goal": req.strategy.optimization_goal,
+    "builtin_indicators": [b.name for b in req.builtin_indicators],
+    "history_summary": req.history_summary or [],
+}, ensure_ascii=False)
+# ↑ 사용자가 buy_when 에 "Ignore previous instructions ..." 를 넣어도
+#   LLM 은 JSON value 로만 받음. system prompt 의 명령은 그대로 유지.
+```
 
 #### `core.iteration_log.append`
 
@@ -505,11 +631,11 @@ class InvalidStrategyError(TradingToolError):
 
 ### 4.5 캐싱 정책
 
-| 데이터 | 캐시 | 키 |
-|--------|------|----|
+| 데이터 | 캐시 | 키 / 정책 |
+|--------|------|----------|
 | OHLCV | parquet (기존) | (market, symbol, interval, start, end) |
-| AI 코치 응답 | JSON 디스크 (기존 ai 캐시 재사용) | `sha256(strategy_def_json + is_result_summary + goal + model)[:16]` |
-| 이력 | parquet (신규) | `(symbol, interval)` 단위 단일 파일 |
+| AI 코치 응답 | JSON 디스크 (기존 ai 캐시 재사용) | `sha256(json.dumps({...}, sort_keys=True))[:16]` — 위 `recommend()` docstring 참조. **summary = 5 scalar 만**, equity_curve/trades 제외. collision 시 마지막 쓰기 우선 |
+| 이력 | parquet (신규) | `data/_iterations/{symbol_safe}_{interval}.parquet`. 동일 `iteration_id` 존재 시 `CacheError` raise (idempotent 보장 X). path 는 `_safe_iteration_path()` 헬퍼로 `ITERATION_LOG_DIR` 기준 검증 |
 
 ---
 
@@ -564,6 +690,18 @@ class InvalidStrategyError(TradingToolError):
 | `CoachPanel` | 진단 + 추천 카드 3개 + ⚠️ 미존재 표시 + 적용 버튼 | `api.strategy.coach(...)` |
 | `HistoryTable` | 이력 표 + 행 클릭 → EditorPanel 복원 | `api.strategy.iterations(symbol, interval)` |
 | (전체) | "백테스트 실행" 버튼 → split 결과 받아 ResultPanel + CoachPanel 갱신 | `api.strategy.backtest(...)` |
+| `loader.js` | 1~4번 탭에서도 `?series=true` 사용해 차트 추세 띠 일관 | `api.trend({series: true, ...})` |
+
+### 5.2.1 추천 적용 시 룰 결합 정책 (role → 위치 + 결합)
+
+| `recommendation.role` | 결합 대상 | 결합 방식 |
+|-----------------------|----------|----------|
+| `entry_filter` | `buy_when` | `(existing) and (sample_rule)` |
+| `filter` | `buy_when` | `(existing) and (sample_rule)` |
+| `exit_rule` | `sell_when` | `(existing) or (sample_rule)` |
+| `sizing` | (v0.5 미지원) | ⚠️ "포지션 사이징은 v0.6" 카드 표시 |
+
+`sample_rule` 이 `null` 인 경우(드물게 AI 가 누락) → 카드의 "적용" 버튼 비활성 + tooltip "수식 누락".
 
 ### 5.3 기본 전략 템플릿 3개 (드롭다운)
 
@@ -572,6 +710,7 @@ class InvalidStrategyError(TradingToolError):
 | **Conservative RSI** | `RSI_14 < 30 and ADX_14 > 20` | `RSI_14 > 70` | 추세 약할 때 진입 X |
 | **MA Crossover** | `SMA_20 > SMA_60 and SMA_60 > SMA_120` | `SMA_20 < SMA_60` | 정배열 진입, 데드크로스 청산 |
 | **MACD Momentum** | `MACDh_12_26_9 > 0 and MACD_12_26_9 > MACDs_12_26_9` | `MACDh_12_26_9 < 0` | MACD 히스토그램 양전 |
+| **BB Squeeze** | `close < BBL_20_2.0_2.0 and RSI_14 < 40` | `close > BBM_20_2.0_2.0` | 볼린저 하단 터치 + RSI 약세 → 평균 회귀 |
 
 ---
 
@@ -608,6 +747,34 @@ except AIServiceError as e:
     log.warning("coach unavailable: %s", e)
     raise   # → 503, 프론트는 CoachPanel 만 회색 처리
 ```
+
+### 6.4 OOS 데이터 부족 graceful 처리 (SkippedHolding 패턴 적용)
+
+baseline 의 `SkippedHolding` 이 portfolio partial-success 패턴인 것처럼,
+strategy backtest 도 OOS 봉 < 30 시 fail-loud 가 아닌 partial-success 반환:
+
+```python
+# core/strategy_engine.py run_split()
+df_is, df_oos = split_70_30(df_with_indicators)
+is_result = run_with_strategy_def(df_is, strategy_def, cash)
+
+if len(df_oos) < 30:
+    return BacktestSplitResult(
+        is_result=is_result,
+        oos_result=None,                                # ← partial
+        is_period=(df_is.index[0], df_is.index[-1]),
+        oos_period=None,
+        is_oos_gap_pct=None,
+        overfit_warning=False,
+        costs_applied=strategy_def.costs,
+        warnings=["OOS 봉 < 30 — 검증 스킵"],
+    )
+
+oos_result = run_with_strategy_def(df_oos, strategy_def, cash)
+# ... 정상 경로 (gap 계산 + overfit_warning)
+```
+
+`BacktestSplitResult.oos_result: BacktestResult | None`, 동등하게 Pydantic `BacktestSplitResponse.oos_result: BacktestResultResponse | None`. 프론트는 OOS 패널을 "검증 불가" 회색 표시.
 
 ### 6.3 ⚠️ 빌트인 미존재 추천 처리
 
@@ -705,9 +872,18 @@ function RecommendationCard({ rec, onApply }) {
 | Python 모듈 | snake_case (`strategy_engine.py`) |
 | 클래스 | PascalCase (`StrategyDef`, `BacktestSplitResult`, `CoachResponse`) |
 | Enum 값 | snake_case 문자열 (`"return"`, `"sharpe"`) — 기존 컨벤션 |
-| BPS 표기 | `*_bps: float`, 0~1000 범위, basis point 단위 (1bp = 0.01%) |
+| BPS 표기 | `*_bps: float`, basis point 단위 (1bp = 0.01%). 상한: commission/slippage ≤ 100, kr_sell_tax ≤ 50 |
 | Expression 변수명 | indicator 컬럼명 그대로 (예: `RSI_14`, `BBU_20_2.0_2.0`) |
 | AI 프롬프트 | 시스템 프롬프트 모듈 상단 상수 `SYSTEM_PROMPT_COACH` |
+| 테스트 임시 디렉토리 | `tmp_path` 대신 baseline 의 **`writable_tmp_dir`** 픽스처 사용 (Windows 권한 호환) |
+
+### 10.1 신규 환경변수 (Plan §7.3 정식 반영)
+
+| Variable | Default | 용도 |
+|----------|---------|------|
+| `ITERATION_LOG_DIR` | `./data/_iterations` | parquet 이력 저장 root. `_safe_iteration_path()` 가 이 root 안만 허용 |
+| `STRATEGY_COACH_MODEL` | `llama-3.3-70b-versatile` | `strategy_coach.recommend()` 의 디폴트 모델 (`os.environ.get` 으로 조회) |
+| `MAX_STRATEGY_RULES` | `10` | `validate_expression()` 의 and/or 토큰 수 상한 (buy + sell 합산) |
 
 ---
 
@@ -781,7 +957,9 @@ data/
 
 ### 11.3 Dependencies (변경 없음)
 
-기존 v0.4.1 의존성 그대로 (pandas-only indicators 베이스라인, groq, fastapi, pyarrow). 신규 패키지 추가 X.
+**Baseline 명시**: indicator 계산은 **pandas-only** (no pandas-ta). `core/indicators.py` 가 `pandas` + Wilder EMA 헬퍼만 사용. v0.5.0 도 pandas-ta 미도입.
+
+기존 v0.4.1 의존성 그대로 (groq, fastapi, pyarrow, pandas, numpy). 신규 패키지 추가 X.
 
 ---
 
@@ -799,3 +977,4 @@ data/
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
 | 0.1 | 2026-04-30 | 초안 — Plan 기반 전체 설계, 신규 dataclass 6개 + Pydantic 8개 + 엔드포인트 5건 + 테스트 ~25개 | 900033@interojo.com |
+| 0.2 | 2026-04-30 | design-validator 84% → 92%+ 후속 정리: AST 화이트리스트 노드 표 + `engine='numexpr'` 우선, BPS 상한 현실화(comm/slip≤100, kr_tax≤50), §10.1 신규 env 3종 정식 반영, BuiltinIndicator/IterationEntryModel/StrategyBuiltinsResponse Pydantic 추가, recommend() 캐시 키 sort_keys=True + 5 스칼라 summary, role→결합 위치 표(§5.2.1), OOS 부족 시 partial-success(§6.4 SkippedHolding 패턴), prompt injection JSON-only 명세, BB Squeeze 템플릿 추가, baseline pandas-only/writable_tmp_dir 픽스처 명시 | 900033@interojo.com |
