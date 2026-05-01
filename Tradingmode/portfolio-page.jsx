@@ -50,6 +50,8 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
     }
     return FX_KRW_PER_USD_FALLBACK;
   }, [beData]);
+  const baseCurrency = (beData && beData.base_currency) || 'KRW';
+  const skippedHoldings = (beData && beData.skipped_holdings) || [];
 
   // Call backend on mount (real mode only).
   useEffectP(() => {
@@ -192,7 +194,7 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
         const offset = r.candles.length - (minN - i);
         const candle = r.candles[offset];
         if (!candle || candle.c == null) { usable = false; break; }
-        const fx = r.meta.currency === 'KRW' ? 1 : FX_KRW_PER_USD;
+        const fx = r.meta.currency === 'KRW' ? 1 : fxKrwPerUsd;
         total += r.qty * candle.c * fx;
       }
       if (!usable) continue;
@@ -201,7 +203,7 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
       series.push({ t, v: total });
     }
     return series;
-  }, [rows, lookback]);
+  }, [rows, lookback, fxKrwPerUsd]);
 
   const periodReturn = perfSeries.length > 1
     ? (perfSeries[perfSeries.length - 1].v - perfSeries[0].v) / perfSeries[0].v
@@ -252,12 +254,13 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
             <span className="muted">보유 종목</span>
             <span className="mono">{rows.length}</span>
             <span className="muted">· 통합 평가 통화</span>
-            <span className="mono">KRW</span>
+            <span className="mono">{baseCurrency}</span>
             <span className="muted">· FX</span>
             <span className="mono">USD/KRW {fmt.price(fxKrwPerUsd, 'KRW')}</span>
             {beData && <span className="mono muted"> · 백엔드 연동</span>}
             {beLoading && <span className="mono muted"> · 동기화 중…</span>}
             {beError && !beData && <span className="mono" style={{color:'oklch(0.65 0.20 25)'}}> · 로컬 계산 (백엔드 연결 안 됨)</span>}
+            {beData && beData.partial && <span className="mono" style={{color:'oklch(0.78 0.16 75)'}}> · 일부 종목 제외 {skippedHoldings.length}</span>}
           </div>
         </div>
         <div className="pf-actions">
@@ -266,22 +269,38 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
         </div>
       </div>
 
+      {beData && beData.partial && skippedHoldings.length > 0 && (
+        <div className="pf-card" style={{ borderColor: 'rgba(245, 198, 83, 0.35)' }}>
+          <div className="pf-card-header">
+            <div className="pf-card-title">제외된 종목</div>
+            <div className="muted mono">{skippedHoldings.length} items</div>
+          </div>
+          <div style={{ padding: '0 16px 14px' }}>
+            {skippedHoldings.map((item) => (
+              <div key={item.market + ':' + item.symbol} className="mono muted" style={{ marginTop: 6 }}>
+                {item.symbol} ({item.market}) · {item.reason}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="pf-kpi-row">
-        <PfKpi label="총 평가금액" value={fmt.price(totals.value, 'KRW')} sub="KRW" big />
+        <PfKpi label="총 평가금액" value={fmt.price(totals.value, baseCurrency)} sub={baseCurrency} big />
         <PfKpi
           label="평가손익"
-          value={(totals.pnl >= 0 ? '+' : '') + fmt.price(totals.pnl, 'KRW')}
+          value={(totals.pnl >= 0 ? '+' : '') + fmt.price(totals.pnl, baseCurrency)}
           sub={(totals.pnlPct * 100).toFixed(2) + '%'}
           tone={totals.pnl >= 0 ? 'up' : 'down'}
           big
         />
         <PfKpi
           label="당일 손익"
-          value={(totals.dayPnl >= 0 ? '+' : '') + fmt.price(totals.dayPnl, 'KRW')}
+          value={(totals.dayPnl >= 0 ? '+' : '') + fmt.price(totals.dayPnl, baseCurrency)}
           sub={(totals.dayPct * 100).toFixed(2) + '%'}
           tone={totals.dayPnl >= 0 ? 'up' : 'down'}
         />
-        <PfKpi label="투자원금" value={fmt.price(totals.cost, 'KRW')} sub="KRW" />
+        <PfKpi label="투자원금" value={fmt.price(totals.cost, baseCurrency)} sub={baseCurrency} />
         <PfKpi
           label={period + ' 수익률'}
           value={(periodReturn * 100).toFixed(2) + '%'}

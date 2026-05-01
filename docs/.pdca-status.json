@@ -5,7 +5,7 @@
   "primaryFeature": "ai-strategy-coach",
   "features": {
     "ai-strategy-coach": {
-      "phase": "design",
+      "phase": "do",
       "level": "Dynamic",
       "createdAt": "2026-04-30",
       "documents": {

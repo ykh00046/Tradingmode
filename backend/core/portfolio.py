@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from core import data_loader, indicators, signals, trend
+from core import data_loader, signals, trend
 from core.types.errors import PortfolioError
 from core.types.schemas import (
     FetchRequest,
@@ -24,6 +24,7 @@ from core.types.schemas import (
     Market,
     Portfolio,
     PortfolioAnalysis,
+    SkippedHolding,
     TrendState,
 )
 from lib.logger import get_logger
@@ -89,13 +90,38 @@ def load_holdings_from_csv(path: str | Path) -> Portfolio:
 # =============================================================================
 
 
+def _static_fx_quote(pair: str, rate: float, as_of: pd.Timestamp, source: str = "static") -> FxQuote:
+    return FxQuote(pair=pair, rate=rate, as_of=as_of, source=source)
+
+
+def _invert_fx_quote(base_quote: FxQuote, target_pair: str) -> FxQuote:
+    if base_quote.rate <= 0:
+        raise PortfolioError(
+            f"cannot invert FX rate for {target_pair}",
+            details={"pair": base_quote.pair, "rate": base_quote.rate},
+        )
+    return FxQuote(
+        pair=target_pair,
+        rate=1.0 / base_quote.rate,
+        as_of=base_quote.as_of,
+        source=base_quote.source,
+    )
+
+
 def _fetch_fx(pair: str, as_of: pd.Timestamp) -> FxQuote:
     """Fetch a single FX quote via FinanceDataReader.
 
     Falls back to a sensible fixed rate on failure so the portfolio page can
     still render — failure here should never break the whole analysis.
     """
-    fallback = {"USDT/KRW": 1380.0, "USD/KRW": 1380.0}.get(pair, 1.0)
+    if pair in {"USDT/USD", "USD/USDT"}:
+        return _static_fx_quote(pair, 1.0, as_of)
+
+    fallback = {
+        "USDT/KRW": 1380.0,
+        "USD/KRW": 1380.0,
+        "KRW/USD": 1 / 1380.0,
+    }.get(pair, 1.0)
     try:
         import FinanceDataReader as fdr                                      # type: ignore
 
@@ -111,6 +137,13 @@ def _fetch_fx(pair: str, as_of: pd.Timestamp) -> FxQuote:
     return FxQuote(pair=pair, rate=rate, as_of=as_of)
 
 
+def _resolve_fx_pair(pair: str, as_of: pd.Timestamp) -> FxQuote:
+    """Return an FX quote for ``pair``, handling synthetic and inverted pairs."""
+    if pair == "KRW/USD":
+        return _invert_fx_quote(_fetch_fx("USD/KRW", as_of), target_pair=pair)
+    return _fetch_fx(pair, as_of)
+
+
 def _resolve_fx_rates(
     portfolio: Portfolio,
     as_of: pd.Timestamp,
@@ -121,7 +154,7 @@ def _resolve_fx_rates(
     for h in portfolio.holdings:
         if h.currency != base:
             pairs_needed.add(f"{h.currency}/{base}")
-    return {p: _fetch_fx(p, as_of) for p in pairs_needed}
+    return {p: _resolve_fx_pair(p, as_of) for p in pairs_needed}
 
 
 # =============================================================================
@@ -148,7 +181,9 @@ def _analyze_holding(
         end=as_of,
     )
     df, _ = data_loader.fetch(req)
-    df = indicators.compute(df)
+    from core import indicators as core_indicators
+
+    df = core_indicators.compute(df)
 
     last_close_local = float(df["close"].iloc[-1])
     current_price = last_close_local * fx_rate
@@ -202,6 +237,7 @@ def analyze(
     base_currency = portfolio.base_currency
 
     analyses: list[HoldingAnalysis] = []
+    skipped: list[SkippedHolding] = []
     for h in portfolio.holdings:
         try:
             analyses.append(_analyze_holding(h, fx_rates, base_currency, lookback_days, as_of))
@@ -211,6 +247,13 @@ def analyze(
                 h.market.value,
                 h.symbol,
                 e,
+            )
+            skipped.append(
+                SkippedHolding(
+                    market=h.market,
+                    symbol=h.symbol,
+                    reason=str(e),
+                )
             )
 
     total_market_value = sum(a.market_value for a in analyses)
@@ -249,4 +292,5 @@ def analyze(
         base_currency=base_currency,
         fx_rates=fx_rates,
         as_of=as_of,
+        skipped_holdings=skipped,
     )

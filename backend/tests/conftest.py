@@ -5,6 +5,10 @@ All generators are deterministic (seeded) so failures are reproducible.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+from uuid import uuid4
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -82,3 +86,12 @@ def short_df() -> pd.DataFrame:
     rng = np.random.default_rng(45)
     closes = 100 + np.cumsum(rng.normal(0, 1, 50))
     return _make_ohlcv(closes)
+
+
+@pytest.fixture
+def writable_tmp_dir() -> Path:
+    root = Path.home() / ".codex" / "memories" / "backend-test-tmp"
+    path = root / uuid4().hex
+    path.mkdir(parents=True, exist_ok=True)
+    yield path
+    shutil.rmtree(path, ignore_errors=True)

@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 # Load .env before any module that reads env vars.
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from api import ai, backtest, indicators, market, ohlcv, portfolio, signals, trend
+from api import ai, backtest, indicators, market, ohlcv, portfolio, signals, strategy, trend
 from api.schemas import HealthResponse
 from core.types.errors import (
     AIServiceError,
@@ -76,7 +76,10 @@ app.add_middleware(
 # =============================================================================
 
 
+from core.types.errors import InvalidStrategyError                            # noqa: E402
+
 _ERROR_MAP: dict[type[TradingToolError], tuple[int, str]] = {
+    InvalidStrategyError: (400, "INVALID_INPUT"),
     InvalidSymbolError: (404, "INVALID_SYMBOL"),
     InsufficientDataError: (422, "INSUFFICIENT_DATA"),
     PortfolioError: (400, "INVALID_INPUT"),
@@ -139,3 +142,4 @@ app.include_router(ai.router, prefix=_API_PREFIX, tags=["ai"])
 app.include_router(portfolio.router, prefix=_API_PREFIX, tags=["portfolio"])
 app.include_router(backtest.router, prefix=_API_PREFIX, tags=["backtest"])
 app.include_router(market.router, prefix=_API_PREFIX, tags=["market"])
+app.include_router(strategy.router, prefix=_API_PREFIX, tags=["strategy"])

@@ -137,6 +137,24 @@
     };
   }
 
+  function emptyBacktest(candles) {
+    var equity = (candles && candles.length)
+      ? candles.map(function (c) { return { t: c.t, eq: 1 }; })
+      : [{ t: 0, eq: 1 }];
+    return {
+      trades: [],
+      equity: equity,
+      stats: {
+        totalReturn: 0,
+        winRate: 0,
+        maxDD: 0,
+        trades: 0,
+        avgRet: 0,
+        sharpe: 0,
+      },
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Public: loadInstrument
   // ─────────────────────────────────────────────────────────────────────────
@@ -161,12 +179,15 @@
       cash:       1_000_000,
       commission: 0.0005,
     });
-    var btP    = window.api.backtest(btReq, { signal: opts.signal, timeout: 30000 });
+    var btP    = window.api.backtest(btReq, { signal: opts.signal, timeout: 30000 })
+      .then(
+        function (value) { return { ok: true, value: value }; },
+        function (error) { return { ok: false, error: error }; }
+      );
 
-    var results = await Promise.all([indP, sigP, btP]);
+    var results = await Promise.all([indP, sigP]);
     var indResp  = results[0];
     var sigResp  = results[1];
-    var btResp   = results[2];
 
     var candles = indResp.candles || [];
     var closes  = candles.map(function (c) { return c.c; });
@@ -184,7 +205,18 @@
       : [];
 
     var signals = backendSignalsToFrontend(sigResp.signals || [], candles);
-    var bt      = backendBacktestToFrontend(btResp);
+    var bt = emptyBacktest(candles);
+    var backtestStatus = 'unavailable';
+    var backtestError = null;
+    var btResult = await btP;
+    if (btResult.ok) {
+      bt = backendBacktestToFrontend(btResult.value);
+      backtestStatus = 'ok';
+    } else {
+      var e = btResult.error;
+      backtestError = e && (e.code || e.message) || 'backtest unavailable';
+      console.warn('[loader] backtest unavailable for', meta.symbol, backtestError);
+    }
 
     return {
       meta:    meta,
@@ -196,6 +228,8 @@
       trades:  bt.trades,
       equity:  bt.equity,
       stats:   bt.stats,
+      backtestStatus: backtestStatus,
+      backtestError: backtestError,
     };
   }
 

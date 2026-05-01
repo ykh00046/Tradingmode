@@ -163,6 +163,12 @@ class FxQuoteResponse(BaseModel):
     source: str
 
 
+class SkippedHoldingResponse(BaseModel):
+    market: MarketLiteral
+    symbol: str
+    reason: str
+
+
 class HoldingAnalysisResponse(BaseModel):
     market: MarketLiteral
     symbol: str
@@ -191,6 +197,8 @@ class PortfolioAnalysisResponse(BaseModel):
     base_currency: Literal["KRW", "USD"]
     fx_rates: dict[str, FxQuoteResponse]
     as_of: int
+    partial: bool = False
+    skipped_holdings: list[SkippedHoldingResponse] = Field(default_factory=list)
 
 
 # =============================================================================
@@ -254,3 +262,138 @@ class MarketSnapshotResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     version: str
+
+
+# =============================================================================
+# Strategy Coach (v0.5)
+# =============================================================================
+
+
+GoalLiteral = Literal["return", "sharpe", "mdd", "win_rate"]
+RoleLiteral = Literal["filter", "exit_rule", "entry_filter", "sizing"]
+
+
+class TradingCostsModel(BaseModel):
+    """Per-trade frictional costs in basis points (1 bp = 0.01%)."""
+    commission_bps: float = Field(default=5.0, ge=0, le=100)
+    slippage_bps: float = Field(default=2.0, ge=0, le=100)
+    kr_sell_tax_bps: float = Field(default=18.0, ge=0, le=50)
+    apply_kr_tax: bool = True
+
+
+class StrategyDefModel(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    buy_when: str = Field(min_length=1, max_length=500)
+    sell_when: str = Field(min_length=1, max_length=500)
+    holding_max_bars: int | None = Field(default=None, gt=0)
+    costs: TradingCostsModel = Field(default_factory=TradingCostsModel)
+    optimization_goal: GoalLiteral = "sharpe"
+
+
+class StrategyBacktestRequest(BaseModel):
+    market: MarketLiteral
+    symbol: str
+    interval: IntervalLiteral = "1d"
+    start: int                                   # unix ms
+    end: int
+    split_ratio: float = Field(default=0.7, gt=0.5, lt=0.95)
+    cash: float = Field(default=10_000_000, gt=0)
+    strategy: StrategyDefModel
+    persist: bool = True                         # whether to append to iteration_log
+
+
+class BacktestSplitResponse(BaseModel):
+    is_result: BacktestResultResponse
+    oos_result: BacktestResultResponse | None = None
+    is_period_start: int                          # unix ms
+    is_period_end: int
+    oos_period_start: int | None = None
+    oos_period_end: int | None = None
+    is_oos_gap_pct: float | None = None
+    overfit_warning: bool = False
+    costs_applied: TradingCostsModel
+    warnings: list[str] = Field(default_factory=list)
+    iteration_id: str | None = None              # populated when persist=True
+    attempt_no: int | None = None
+
+
+class IsResultSummary(BaseModel):
+    """Compact 6-scalar IS summary used by the coach prompt."""
+    total_return: float
+    annual_return: float
+    max_drawdown: float
+    win_rate: float
+    sharpe_ratio: float
+    num_trades: int
+
+
+class StrategyCoachRequest(BaseModel):
+    strategy: StrategyDefModel
+    is_result: IsResultSummary
+    history_summary: list[dict] | None = None
+
+
+class CoachRecommendationModel(BaseModel):
+    indicator: str
+    params: dict = Field(default_factory=dict)
+    role: RoleLiteral
+    reason: str
+    expected_synergy: str
+    available: bool
+    sample_rule: str | None = None
+
+
+class CoachResponseModel(BaseModel):
+    diagnosis: str
+    recommendations: list[CoachRecommendationModel]
+    warnings: list[str] = Field(default_factory=list)
+    model: str
+    generated_at: int
+    disclaimer: str
+
+
+class BuiltinIndicatorModel(BaseModel):
+    name: str
+    columns: list[str]
+    params: dict = Field(default_factory=dict)
+    description: str
+    category: Literal["momentum", "trend", "volatility", "volume"]
+
+
+class StrategyBuiltinsResponse(BaseModel):
+    indicators: list[BuiltinIndicatorModel]
+    operators: list[str]
+    helpers: list[str]
+
+
+class IterationEntryModel(BaseModel):
+    iteration_id: str
+    symbol: str
+    interval: str
+    attempt_no: int
+    strategy_def_json: str
+    is_total_return: float
+    oos_total_return: float | None = None
+    is_sharpe: float
+    oos_sharpe: float | None = None
+    is_mdd: float
+    oos_mdd: float | None = None
+    is_win_rate: float
+    is_oos_gap_pct: float | None = None
+    overfit_warning: bool
+    optimization_goal: str
+    coach_diagnosis: str | None = None
+    applied_recommendation: str | None = None
+    timestamp: int                               # unix ms
+
+
+# === Trend series extension =================================================
+
+
+class TrendSeriesPoint(BaseModel):
+    t: int                                       # unix ms
+    state: Literal["uptrend", "downtrend", "sideways"]
+
+
+class TrendResponseExt(TrendResponse):
+    series: list[TrendSeriesPoint] | None = None

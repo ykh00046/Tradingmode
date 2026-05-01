@@ -170,6 +170,15 @@ class FxQuote:
 
 
 @dataclass(frozen=True)
+class SkippedHolding:
+    """A holding excluded from aggregate analysis, with the reason recorded."""
+
+    market: Market
+    symbol: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class HoldingAnalysis:
     """Per-holding analysis result.
 
@@ -202,6 +211,7 @@ class PortfolioAnalysis:
     base_currency: Literal["KRW", "USD"]
     fx_rates: dict[str, FxQuote]
     as_of: pd.Timestamp
+    skipped_holdings: list[SkippedHolding] = field(default_factory=list)
 
 
 # =============================================================================
@@ -300,4 +310,144 @@ class MarketSnapshot:
     btc: IndexQuote
     dxy: IndexQuote
     vix: IndexQuote
+    timestamp: pd.Timestamp
+
+
+# =============================================================================
+# AI Strategy Coach (v0.5)
+# =============================================================================
+
+
+class OptimizationGoal(str, Enum):
+    """User-selected goal driving the AI coach prompt."""
+
+    RETURN = "return"        # cumulative return
+    SHARPE = "sharpe"
+    MDD = "mdd"              # minimise drawdown
+    WIN_RATE = "win_rate"
+
+
+@dataclass(frozen=True)
+class TradingCosts:
+    """Per-trade frictional costs in basis points (1 bp = 0.01%).
+
+    Per Design §10 caps: commission/slippage ≤ 100 bp (1%),
+    kr_sell_tax ≤ 50 bp (0.5%).
+    """
+
+    commission_bps: float = 5.0
+    slippage_bps: float = 2.0
+    kr_sell_tax_bps: float = 18.0
+    apply_kr_tax: bool = True
+
+
+@dataclass(frozen=True)
+class StrategyDef:
+    """User-defined trading strategy.
+
+    ``buy_when`` / ``sell_when`` are pandas-eval expressions evaluated against
+    a dataframe whose columns include the indicator series. They are validated
+    by ``strategy_engine.validate_expression`` before being passed to
+    ``pandas.eval`` so arbitrary code execution is impossible.
+    """
+
+    name: str
+    buy_when: str
+    sell_when: str
+    holding_max_bars: int | None = None
+    indicator_config: IndicatorConfig | None = None
+    costs: TradingCosts = field(default_factory=TradingCosts)
+    optimization_goal: OptimizationGoal = OptimizationGoal.SHARPE
+
+
+@dataclass(frozen=True)
+class BacktestSplitResult:
+    """In-sample + Out-of-sample backtest pair from a single 70/30 split.
+
+    ``oos_result`` may be ``None`` when the OOS slice has too few bars (< 30).
+    Per Design §6.4 we degrade gracefully (SkippedHolding pattern) rather than
+    raising — the IS result is still useful and ``warnings`` carries context.
+    """
+
+    is_result: BacktestResult
+    oos_result: BacktestResult | None
+    is_period: tuple[pd.Timestamp, pd.Timestamp]
+    oos_period: tuple[pd.Timestamp, pd.Timestamp] | None
+    is_oos_gap_pct: float | None
+    overfit_warning: bool
+    costs_applied: TradingCosts
+    warnings: list[str] = field(default_factory=list)
+
+
+# === Built-in indicator catalog ============================================
+
+
+@dataclass(frozen=True)
+class BuiltinIndicator:
+    """Metadata for a single indicator exposed to the UI/AI as a building block."""
+
+    name: str                              # human label (e.g. "RSI")
+    columns: list[str]                     # df columns it produces
+    params: dict                           # default parameters
+    description: str                       # one-line Korean description
+    category: Literal["momentum", "trend", "volatility", "volume"]
+
+
+# === AI coach ==============================================================
+
+
+@dataclass(frozen=True)
+class CoachRecommendation:
+    """A single boost suggestion returned by the AI coach."""
+
+    indicator: str                         # builtin name or free-form
+    params: dict
+    role: Literal["filter", "exit_rule", "entry_filter", "sizing"]
+    reason: str
+    expected_synergy: str
+    available: bool                        # True if ``indicator`` matches a builtin
+    sample_rule: str | None = None         # expression to AND/OR into buy/sell
+
+
+@dataclass(frozen=True)
+class CoachResponse:
+    """Full coach payload — diagnosis + 3 recommendations + warnings."""
+
+    diagnosis: str
+    recommendations: list[CoachRecommendation]
+    warnings: list[str]
+    model: str
+    generated_at: pd.Timestamp
+    disclaimer: str = "본 추천은 LLM 패턴 매칭 결과로 시장 통찰이 아닙니다."
+
+
+# === Iteration history =====================================================
+
+
+@dataclass(frozen=True)
+class IterationEntry:
+    """A single backtest attempt persisted to parquet for later comparison.
+
+    Stored under ``ITERATION_LOG_DIR/{symbol_safe}_{interval}.parquet``.
+    ``iteration_id`` is a full ``uuid4().hex`` (32 chars) — collisions are
+    treated as bugs and rejected by ``iteration_log.append``.
+    """
+
+    iteration_id: str
+    symbol: str
+    interval: str
+    attempt_no: int
+    strategy_def_json: str
+    is_total_return: float
+    oos_total_return: float | None
+    is_sharpe: float
+    oos_sharpe: float | None
+    is_mdd: float
+    oos_mdd: float | None
+    is_win_rate: float
+    is_oos_gap_pct: float | None
+    overfit_warning: bool
+    optimization_goal: str
+    coach_diagnosis: str | None
+    applied_recommendation: str | None
     timestamp: pd.Timestamp

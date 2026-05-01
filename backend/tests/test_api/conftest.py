@@ -60,6 +60,7 @@ def patch_fetch(mocker, synthetic_df) -> None:
         "api.trend.data_loader.fetch",
         "api.ai.data_loader.fetch",
         "api.backtest.data_loader.fetch",
+        "api.strategy.data_loader.fetch",
     ]
     for t in targets:
         mocker.patch(t, return_value=(synthetic_df, True))

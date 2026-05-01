@@ -142,6 +142,14 @@
     aiExplain:        function (body, opt)      { return apiPost('/api/ai/explain', body, opt); },
     portfolio:        function (body, opt)      { return apiPost('/api/portfolio', body, opt); },
     backtest:         function (body, opt)      { return apiPost('/api/backtest', body, opt); },
+
+    // Strategy Coach (v0.5)
+    strategy: {
+      backtest:    function (body, opt)         { return apiPost('/api/strategy/backtest', body, opt); },
+      builtins:    function (opt)               { return apiGet('/api/strategy/builtins', null, opt); },
+      iterations:  function (params, opt)       { return apiGet('/api/strategy/iterations', params, opt); },
+    },
+    aiCoach:          function (body, opt)      { return apiPost('/api/ai/strategy-coach', body, opt); },
   };
 
   window.ApiError = ApiError;

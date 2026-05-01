@@ -453,6 +453,17 @@ function BacktestPage({ instrument, upColor, downColor }) {
         </div>
       </div>
 
+      {instrument.backtestStatus === 'unavailable' && (
+        <div className="data-status data-status-error" style={{ marginBottom: 10 }}>
+          <span className="ds-left">
+            <span className="ds-dot" style={{ background: 'var(--down)' }} />
+            <span className="ds-status mono" style={{ color: 'var(--down)' }}>BACKTEST OFFLINE</span>
+            <span className="ds-msg">백테스트 결과를 불러오지 못해 차트 데이터만 표시합니다.</span>
+          </span>
+          <span className="ds-right mono muted">{instrument.backtestError || 'UNKNOWN'}</span>
+        </div>
+      )}
+
       <div className="bt-grid">
         {/* Left: strategy + params */}
         <div className="bt-config">
@@ -824,6 +835,10 @@ function App() {
           <span className="pt-num mono">04</span>
           <span>포트폴리오</span>
         </button>
+        <button className={'pt-btn' + (page === 'coach' ? ' active' : '')} onClick={() => setPage('coach')}>
+          <span className="pt-num mono">05</span>
+          <span>Strategy Coach</span>
+        </button>
         <div className="pt-spacer" />
         <div className="pt-meta mono">
           {fmt.date(Date.now())} · {instrument.candles.length}봉 로드됨 · 캐시 HIT
@@ -853,6 +868,8 @@ function App() {
             <SignalsPage universe={universe} data={data} currentSymbol={current} setCurrent={setCurrent} upColor={upColor} downColor={downColor} />
           ) : page === 'portfolio' ? (
             <PortfolioPage universe={universe} data={data} setCurrent={setCurrent} upColor={upColor} downColor={downColor} />
+          ) : page === 'coach' ? (
+            <StrategyCoachPage universe={universe} currentSymbol={current} setCurrent={setCurrent} upColor={upColor} downColor={downColor} />
           ) : (
             <BacktestPage instrument={instrument} upColor={upColor} downColor={downColor} />
           )}

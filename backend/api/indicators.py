@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 
 from api import converters, schemas
-from core import data_loader, indicators as core_indicators
+from core import data_loader
 from core.types.schemas import FetchRequest, Interval, Market
 
 router = APIRouter()
@@ -27,6 +27,8 @@ def get_indicators(
         end=converters.ms_to_ts(end),
     )
     df, cache_hit = data_loader.fetch(req)
+    from core import indicators as core_indicators
+
     df = core_indicators.compute(df)
     return schemas.IndicatorsResponse(
         market=market,

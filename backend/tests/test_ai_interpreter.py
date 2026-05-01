@@ -72,8 +72,8 @@ def _fake_groq_client(content: str) -> object:
 # =============================================================================
 
 
-def test_interpret_signal_parses_json(mocker, tmp_path) -> None:
-    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=tmp_path)
+def test_interpret_signal_parses_json(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=writable_tmp_dir)
     payload = json.dumps(
         {
             "summary": "단기/중기 MA 상향 교차",
@@ -99,8 +99,8 @@ def test_interpret_signal_parses_json(mocker, tmp_path) -> None:
 # =============================================================================
 
 
-def test_cache_hit_avoids_second_call(mocker, tmp_path) -> None:
-    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=tmp_path)
+def test_cache_hit_avoids_second_call(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=writable_tmp_dir)
     payload = json.dumps(
         {"summary": "X", "detail": "Y", "confidence": "high"}
     )
@@ -123,8 +123,8 @@ def test_cache_hit_avoids_second_call(mocker, tmp_path) -> None:
 # =============================================================================
 
 
-def test_invalid_json_raises_ai_service_error(mocker, tmp_path) -> None:
-    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=tmp_path)
+def test_invalid_json_raises_ai_service_error(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=writable_tmp_dir)
     mocker.patch(
         "core.ai_interpreter._client",
         return_value=_fake_groq_client("not JSON"),
@@ -133,8 +133,8 @@ def test_invalid_json_raises_ai_service_error(mocker, tmp_path) -> None:
         ai_interpreter.interpret_signal(_signal(), _df_with_indicators(), "BTCUSDT")
 
 
-def test_missing_field_raises_ai_service_error(mocker, tmp_path) -> None:
-    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=tmp_path)
+def test_missing_field_raises_ai_service_error(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=writable_tmp_dir)
     mocker.patch(
         "core.ai_interpreter._client",
         return_value=_fake_groq_client('{"summary": "x", "detail": "y"}'),
@@ -143,8 +143,8 @@ def test_missing_field_raises_ai_service_error(mocker, tmp_path) -> None:
         ai_interpreter.interpret_signal(_signal(), _df_with_indicators(), "BTCUSDT")
 
 
-def test_unknown_confidence_is_coerced_to_medium(mocker, tmp_path) -> None:
-    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=tmp_path)
+def test_unknown_confidence_is_coerced_to_medium(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.ai_interpreter.cache.cache_root", return_value=writable_tmp_dir)
     payload = json.dumps(
         {"summary": "x", "detail": "y", "confidence": "very-high"}
     )

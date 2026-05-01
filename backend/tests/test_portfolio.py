@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+from uuid import uuid4
+
 import pandas as pd
 import pytest
 
 from core import portfolio as portfolio_module
 from core.types.errors import PortfolioError
 from core.types.schemas import (
+    FxQuote,
     Holding,
     HoldingAnalysis,
     Market,
@@ -15,6 +20,7 @@ from core.types.schemas import (
     Signal,
     SignalAction,
     SignalKind,
+    SkippedHolding,
     TrendState,
 )
 
@@ -24,8 +30,17 @@ from core.types.schemas import (
 # =============================================================================
 
 
-def test_load_holdings_from_csv_parses_valid_file(tmp_path) -> None:
-    csv = tmp_path / "h.csv"
+@pytest.fixture
+def workspace_tmp_dir() -> Path:
+    root = Path.home() / ".codex" / "memories" / "backend-test-temp"
+    path = root / uuid4().hex
+    path.mkdir(parents=True, exist_ok=True)
+    yield path
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def test_load_holdings_from_csv_parses_valid_file(workspace_tmp_dir: Path) -> None:
+    csv = workspace_tmp_dir / "h.csv"
     csv.write_text(
         "market,symbol,quantity,avg_price,currency\n"
         "crypto,BTCUSDT,0.05,65000,USDT\n"
@@ -39,15 +54,15 @@ def test_load_holdings_from_csv_parses_valid_file(tmp_path) -> None:
     assert p.holdings[1].currency == "KRW"
 
 
-def test_load_holdings_missing_columns_raises(tmp_path) -> None:
-    csv = tmp_path / "h.csv"
+def test_load_holdings_missing_columns_raises(workspace_tmp_dir: Path) -> None:
+    csv = workspace_tmp_dir / "h.csv"
     csv.write_text("market,symbol,quantity\ncrypto,BTC,1\n", encoding="utf-8")
     with pytest.raises(PortfolioError, match="missing required columns"):
         portfolio_module.load_holdings_from_csv(csv)
 
 
-def test_load_holdings_negative_quantity_raises(tmp_path) -> None:
-    csv = tmp_path / "h.csv"
+def test_load_holdings_negative_quantity_raises(workspace_tmp_dir: Path) -> None:
+    csv = workspace_tmp_dir / "h.csv"
     csv.write_text(
         "market,symbol,quantity,avg_price,currency\n"
         "crypto,BTCUSDT,-1,65000,USDT\n",
@@ -57,15 +72,15 @@ def test_load_holdings_negative_quantity_raises(tmp_path) -> None:
         portfolio_module.load_holdings_from_csv(csv)
 
 
-def test_load_holdings_empty_file_raises(tmp_path) -> None:
-    csv = tmp_path / "h.csv"
+def test_load_holdings_empty_file_raises(workspace_tmp_dir: Path) -> None:
+    csv = workspace_tmp_dir / "h.csv"
     csv.write_text("market,symbol,quantity,avg_price,currency\n", encoding="utf-8")
     with pytest.raises(PortfolioError, match="no holdings"):
         portfolio_module.load_holdings_from_csv(csv)
 
 
-def test_load_holdings_unsupported_currency_raises(tmp_path) -> None:
-    csv = tmp_path / "h.csv"
+def test_load_holdings_unsupported_currency_raises(workspace_tmp_dir: Path) -> None:
+    csv = workspace_tmp_dir / "h.csv"
     csv.write_text(
         "market,symbol,quantity,avg_price,currency\n"
         "crypto,BTCUSDT,1,65000,EUR\n",
@@ -75,9 +90,9 @@ def test_load_holdings_unsupported_currency_raises(tmp_path) -> None:
         portfolio_module.load_holdings_from_csv(csv)
 
 
-def test_load_holdings_csv_not_found(tmp_path) -> None:
+def test_load_holdings_csv_not_found(workspace_tmp_dir: Path) -> None:
     with pytest.raises(PortfolioError, match="CSV not found"):
-        portfolio_module.load_holdings_from_csv(tmp_path / "missing.csv")
+        portfolio_module.load_holdings_from_csv(workspace_tmp_dir / "missing.csv")
 
 
 # =============================================================================
@@ -112,6 +127,32 @@ def test_aggregate_trend_counts_all_states() -> None:
     assert summary[TrendState.UPTREND] == 2
     assert summary[TrendState.DOWNTREND] == 1
     assert summary[TrendState.SIDEWAYS] == 0
+
+
+def test_resolve_fx_rates_inverts_usdkrw_for_usd_base(mocker) -> None:
+    portfolio = Portfolio(
+        holdings=[
+            Holding(market=Market.KR_STOCK, symbol="005930", quantity=1, avg_price=70000, currency="KRW"),
+            Holding(market=Market.CRYPTO, symbol="BTCUSDT", quantity=0.1, avg_price=65000, currency="USDT"),
+        ],
+        base_currency="USD",
+    )
+    as_of = pd.Timestamp("2026-04-30", tz="UTC")
+
+    def _fake_fetch_fx(pair: str, when: pd.Timestamp) -> FxQuote:
+        assert when == as_of
+        if pair == "USD/KRW":
+            return FxQuote(pair=pair, rate=1400.0, as_of=when)
+        if pair == "USDT/USD":
+            return FxQuote(pair=pair, rate=1.0, as_of=when)
+        raise AssertionError(f"unexpected pair: {pair}")
+
+    mocker.patch("core.portfolio._fetch_fx", side_effect=_fake_fetch_fx)
+
+    rates = portfolio_module._resolve_fx_rates(portfolio, as_of)
+
+    assert rates["KRW/USD"].rate == pytest.approx(1 / 1400.0)
+    assert rates["USDT/USD"].rate == pytest.approx(1.0)
 
 
 # =============================================================================
@@ -202,3 +243,10 @@ def test_analyze_skips_failing_holding(mocker, caplog) -> None:
     # Only the GOOD holding made it through
     assert len(result.holdings_analysis) == 1
     assert result.holdings_analysis[0].holding.symbol == "GOOD"
+    assert result.skipped_holdings == [
+        SkippedHolding(
+            market=Market.KR_STOCK,
+            symbol="BAD",
+            reason="simulated failure",
+        )
+    ]

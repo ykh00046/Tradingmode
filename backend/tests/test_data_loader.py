@@ -37,8 +37,8 @@ def _make_request(market: Market = Market.CRYPTO) -> FetchRequest:
     )
 
 
-def test_cache_miss_calls_adapter_and_saves(mocker, tmp_path) -> None:
-    mocker.patch("core.data_loader.cache.cache_root", return_value=tmp_path)
+def test_cache_miss_calls_adapter_and_saves(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.data_loader.cache.cache_root", return_value=writable_tmp_dir)
     fake = _fake_df()
     bin_dl = mocker.patch("core.data_loader.binance_adapter.download", return_value=fake)
     krx_dl = mocker.patch("core.data_loader.krx_adapter.download")
@@ -51,8 +51,8 @@ def test_cache_miss_calls_adapter_and_saves(mocker, tmp_path) -> None:
     pd.testing.assert_frame_equal(result, fake)
 
 
-def test_cache_hit_skips_adapter(mocker, tmp_path) -> None:
-    mocker.patch("core.data_loader.cache.cache_root", return_value=tmp_path)
+def test_cache_hit_skips_adapter(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.data_loader.cache.cache_root", return_value=writable_tmp_dir)
     fake = _fake_df()
     bin_dl = mocker.patch("core.data_loader.binance_adapter.download", return_value=fake)
 
@@ -65,8 +65,8 @@ def test_cache_hit_skips_adapter(mocker, tmp_path) -> None:
     assert cache_hit is True
 
 
-def test_routes_kr_market_to_krx_adapter(mocker, tmp_path) -> None:
-    mocker.patch("core.data_loader.cache.cache_root", return_value=tmp_path)
+def test_routes_kr_market_to_krx_adapter(mocker, writable_tmp_dir) -> None:
+    mocker.patch("core.data_loader.cache.cache_root", return_value=writable_tmp_dir)
     fake = _fake_df()
     bin_dl = mocker.patch("core.data_loader.binance_adapter.download")
     krx_dl = mocker.patch("core.data_loader.krx_adapter.download", return_value=fake)
@@ -84,10 +84,10 @@ def test_routes_kr_market_to_krx_adapter(mocker, tmp_path) -> None:
     assert bin_dl.call_count == 0
 
 
-def test_invalid_symbol_does_not_create_cache_entry(mocker, tmp_path) -> None:
+def test_invalid_symbol_does_not_create_cache_entry(mocker, writable_tmp_dir) -> None:
     from core.types.errors import InvalidSymbolError
 
-    mocker.patch("core.data_loader.cache.cache_root", return_value=tmp_path)
+    mocker.patch("core.data_loader.cache.cache_root", return_value=writable_tmp_dir)
     mocker.patch(
         "core.data_loader.binance_adapter.download",
         side_effect=InvalidSymbolError("nope"),
@@ -97,4 +97,4 @@ def test_invalid_symbol_does_not_create_cache_entry(mocker, tmp_path) -> None:
         data_loader.fetch(_make_request(Market.CRYPTO))
 
     # No parquet files should have been written.
-    assert not list(tmp_path.rglob("*.parquet"))
+    assert not list(writable_tmp_dir.rglob("*.parquet"))

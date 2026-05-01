@@ -17,11 +17,16 @@ from api import schemas as api_schemas
 from core.types.schemas import (
     AICommentary,
     BacktestResult,
+    BacktestSplitResult,
+    BuiltinIndicator,
+    CoachResponse,
     FxQuote,
     HoldingAnalysis,
     IndexQuote,
+    IterationEntry,
     MarketSnapshot,
     PortfolioAnalysis,
+    SkippedHolding,
     Signal,
     TrendState,
 )
@@ -190,6 +195,16 @@ def holding_analysis_to_response(ha: HoldingAnalysis) -> api_schemas.HoldingAnal
     )
 
 
+def skipped_holding_to_response(
+    skipped: SkippedHolding,
+) -> api_schemas.SkippedHoldingResponse:
+    return api_schemas.SkippedHoldingResponse(
+        market=skipped.market.value,                                         # type: ignore[arg-type]
+        symbol=skipped.symbol,
+        reason=skipped.reason,
+    )
+
+
 def portfolio_analysis_to_response(
     pa: PortfolioAnalysis,
 ) -> api_schemas.PortfolioAnalysisResponse:
@@ -203,6 +218,8 @@ def portfolio_analysis_to_response(
         base_currency=pa.base_currency,                                      # type: ignore[arg-type]
         fx_rates={pair: fx_to_response(q) for pair, q in pa.fx_rates.items()},
         as_of=ts_to_ms(pa.as_of),
+        partial=bool(pa.skipped_holdings),
+        skipped_holdings=[skipped_holding_to_response(s) for s in pa.skipped_holdings],
     )
 
 
@@ -282,6 +299,114 @@ def snapshot_to_response(s: MarketSnapshot) -> api_schemas.MarketSnapshotRespons
 # Re-exports useful for tests
 # =============================================================================
 
+# =============================================================================
+# Strategy Coach (v0.5)
+# =============================================================================
+
+
+def trend_series_to_points(
+    states: pd.Series,
+) -> list[api_schemas.TrendSeriesPoint]:
+    """``classify_series`` Series (DatetimeIndex → TrendState) → list[{t,state}]."""
+    out: list[api_schemas.TrendSeriesPoint] = []
+    for idx, val in states.items():
+        if not isinstance(idx, pd.Timestamp):
+            try:
+                idx = pd.Timestamp(idx)
+            except Exception:
+                continue
+        state_val = val.value if hasattr(val, "value") else str(val)
+        out.append(api_schemas.TrendSeriesPoint(t=ts_to_ms(idx), state=state_val))      # type: ignore[arg-type]
+    return out
+
+
+def costs_to_response(c) -> api_schemas.TradingCostsModel:
+    return api_schemas.TradingCostsModel(
+        commission_bps=c.commission_bps,
+        slippage_bps=c.slippage_bps,
+        kr_sell_tax_bps=c.kr_sell_tax_bps,
+        apply_kr_tax=c.apply_kr_tax,
+    )
+
+
+def split_to_response(
+    result: BacktestSplitResult,
+    iteration_id: str | None = None,
+    attempt_no: int | None = None,
+) -> api_schemas.BacktestSplitResponse:
+    is_resp = backtest_to_response(result.is_result)
+    oos_resp = backtest_to_response(result.oos_result) if result.oos_result else None
+    return api_schemas.BacktestSplitResponse(
+        is_result=is_resp,
+        oos_result=oos_resp,
+        is_period_start=ts_to_ms(result.is_period[0]),
+        is_period_end=ts_to_ms(result.is_period[1]),
+        oos_period_start=ts_to_ms(result.oos_period[0]) if result.oos_period else None,
+        oos_period_end=ts_to_ms(result.oos_period[1]) if result.oos_period else None,
+        is_oos_gap_pct=result.is_oos_gap_pct,
+        overfit_warning=result.overfit_warning,
+        costs_applied=costs_to_response(result.costs_applied),
+        warnings=list(result.warnings),
+        iteration_id=iteration_id,
+        attempt_no=attempt_no,
+    )
+
+
+def builtin_to_response(b: BuiltinIndicator) -> api_schemas.BuiltinIndicatorModel:
+    return api_schemas.BuiltinIndicatorModel(
+        name=b.name,
+        columns=list(b.columns),
+        params=dict(b.params),
+        description=b.description,
+        category=b.category,                                                  # type: ignore[arg-type]
+    )
+
+
+def coach_to_response(resp: CoachResponse) -> api_schemas.CoachResponseModel:
+    return api_schemas.CoachResponseModel(
+        diagnosis=resp.diagnosis,
+        recommendations=[
+            api_schemas.CoachRecommendationModel(
+                indicator=r.indicator,
+                params=r.params,
+                role=r.role,                                                  # type: ignore[arg-type]
+                reason=r.reason,
+                expected_synergy=r.expected_synergy,
+                available=r.available,
+                sample_rule=r.sample_rule,
+            )
+            for r in resp.recommendations
+        ],
+        warnings=list(resp.warnings),
+        model=resp.model,
+        generated_at=ts_to_ms(resp.generated_at),
+        disclaimer=resp.disclaimer,
+    )
+
+
+def iteration_to_response(e: IterationEntry) -> api_schemas.IterationEntryModel:
+    return api_schemas.IterationEntryModel(
+        iteration_id=e.iteration_id,
+        symbol=e.symbol,
+        interval=e.interval,
+        attempt_no=e.attempt_no,
+        strategy_def_json=e.strategy_def_json,
+        is_total_return=e.is_total_return,
+        oos_total_return=e.oos_total_return,
+        is_sharpe=e.is_sharpe,
+        oos_sharpe=e.oos_sharpe,
+        is_mdd=e.is_mdd,
+        oos_mdd=e.oos_mdd,
+        is_win_rate=e.is_win_rate,
+        is_oos_gap_pct=e.is_oos_gap_pct,
+        overfit_warning=e.overfit_warning,
+        optimization_goal=e.optimization_goal,
+        coach_diagnosis=e.coach_diagnosis,
+        applied_recommendation=e.applied_recommendation,
+        timestamp=ts_to_ms(e.timestamp),
+    )
+
+
 __all__ = [
     "ts_to_ms",
     "ms_to_ts",
@@ -290,10 +415,16 @@ __all__ = [
     "signal_to_out",
     "signals_to_out",
     "trend_to_response",
+    "trend_series_to_points",
     "commentary_to_response",
     "fx_to_response",
     "holding_analysis_to_response",
     "portfolio_analysis_to_response",
     "backtest_to_response",
     "snapshot_to_response",
+    "split_to_response",
+    "builtin_to_response",
+    "coach_to_response",
+    "iteration_to_response",
+    "costs_to_response",
 ]

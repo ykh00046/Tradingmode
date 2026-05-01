@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from core.indicators import add_sma
 from core.types.schemas import BacktestResult
 
 

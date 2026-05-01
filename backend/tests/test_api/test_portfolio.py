@@ -10,6 +10,7 @@ from core.types.schemas import (
     Market,
     Portfolio,
     PortfolioAnalysis,
+    SkippedHolding,
     TrendState,
 )
 
@@ -72,6 +73,57 @@ def test_portfolio_returns_analysis(client, mocker) -> None:
     assert abs(weights - 1.0) < 1e-9
     assert body["total_pnl_pct"] > 0
     assert body["trend_summary"]["uptrend"] == 2
+    assert body["partial"] is False
+    assert body["skipped_holdings"] == []
+
+
+def test_portfolio_returns_partial_metadata(client, mocker) -> None:
+    analysis = _fake_analysis(
+        Portfolio(
+            holdings=[
+                Holding(
+                    market=Market.CRYPTO,
+                    symbol="BTCUSDT",
+                    quantity=0.5,
+                    avg_price=60000,
+                    currency="USDT",
+                )
+            ],
+            base_currency="KRW",
+        )
+    )
+    analysis = PortfolioAnalysis(
+        portfolio=analysis.portfolio,
+        holdings_analysis=analysis.holdings_analysis,
+        total_market_value=analysis.total_market_value,
+        total_cost_basis=analysis.total_cost_basis,
+        total_pnl=analysis.total_pnl,
+        total_pnl_pct=analysis.total_pnl_pct,
+        trend_summary=analysis.trend_summary,
+        base_currency=analysis.base_currency,
+        fx_rates=analysis.fx_rates,
+        as_of=analysis.as_of,
+        skipped_holdings=[
+            SkippedHolding(
+                market=Market.KR_STOCK,
+                symbol="005930",
+                reason="upstream timeout",
+            )
+        ],
+    )
+    mocker.patch("api.portfolio.core_portfolio.analyze", return_value=analysis)
+
+    res = client.post("/api/portfolio", json=_VALID_BODY)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["partial"] is True
+    assert body["skipped_holdings"] == [
+        {
+            "market": "kr_stock",
+            "symbol": "005930",
+            "reason": "upstream timeout",
+        }
+    ]
 
 
 def test_portfolio_rejects_empty_holdings(client) -> None:

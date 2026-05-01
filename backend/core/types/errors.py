@@ -61,3 +61,16 @@ class AIServiceError(TradingToolError):
 
 class PortfolioError(TradingToolError):
     """Portfolio input/analysis error (CSV parse, missing field, bad value)."""
+
+
+class InvalidStrategyError(TradingToolError):
+    """User-defined strategy expression failed validation.
+
+    Raised when:
+    - AST contains a forbidden node type (Lambda, Attribute, Subscript, ...).
+    - A Name references a column that doesn't exist on the dataframe.
+    - A Call references a function outside the allowlist.
+    - and/or token count exceeds ``MAX_STRATEGY_RULES``.
+
+    Always includes ``details`` with at least ``{"reason": ..., "expr": ...}``.
+    """
