@@ -1,20 +1,22 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": ["ai-strategy-coach"],
-  "primaryFeature": "ai-strategy-coach",
+  "activeFeatures": [],
+  "primaryFeature": null,
   "features": {
     "ai-strategy-coach": {
-      "phase": "do",
+      "phase": "archived",
       "level": "Dynamic",
       "createdAt": "2026-04-30",
+      "archivedAt": "2026-04-30",
+      "archivedTo": "docs/archive/2026-04/ai-strategy-coach/",
       "documents": {
-        "plan": "docs/01-plan/features/ai-strategy-coach.plan.md",
-        "design": "docs/02-design/features/ai-strategy-coach.design.md",
-        "analysis": null,
-        "report": null
+        "plan": "docs/archive/2026-04/ai-strategy-coach/ai-strategy-coach.plan.md",
+        "design": "docs/archive/2026-04/ai-strategy-coach/ai-strategy-coach.design.md",
+        "analysis": "docs/archive/2026-04/ai-strategy-coach/ai-strategy-coach.analysis.md",
+        "report": "docs/archive/2026-04/ai-strategy-coach/ai-strategy-coach.report.md"
       },
-      "matchRate": null,
+      "matchRate": 97,
       "iteration": 0
     },
     "trading-analysis-tool": {

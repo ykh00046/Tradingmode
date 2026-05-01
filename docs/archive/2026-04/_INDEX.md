@@ -40,9 +40,49 @@
 
 | 차기 사이클 | 주제 |
 |---|---|
-| v0.5 | M-2~M-6, L-1~L-7, S-1 정합화 (1~2일) |
+| ~~v0.5~~ | ✅ ai-strategy-coach 사이클로 흡수됨 (아래) |
+| v0.6 | 거절 학습 누적, walk-forward 분석 |
+| v0.7 | 사용자 정의 수식 지표 (AST 안전 모드 확장) |
 | v2 | 포트폴리오 백테스팅 + 종목 상관관계 + 뉴스 sentiment + 실시간 알림 |
 | v3 | 자동매매 (KIS/키움/Binance Trade) + 안전장치 (kill switch, dry-run, 일일 한도) |
+
+---
+
+### 2. ai-strategy-coach (v0.5.0)
+
+| 항목 | 값 |
+|---|---|
+| **종료일** | 2026-04-30 |
+| **최종 Match Rate** | **97%** (Critical/High 0건) |
+| **Iterations** | 0 (97% ≥ 90% — iterate 건너뜀) |
+| **상태** | completed → archived |
+| **GitHub** | https://github.com/ykh00046/Tradingmode |
+
+**한 줄 요약**: 사용자 정의 매매 전략 + 70/30 split 백테스트 + Groq llama-3.3-70b AI 보완 지표 추천 + parquet 영구 이력의 반복 협업 루프. 빌트인 외 추천 시 ⚠️ 카드로 Claude 추가 요청 워크플로우.
+
+**보관 문서** (`./ai-strategy-coach/`)
+
+| 문서 | 라인 | 설명 |
+|------|-----:|------|
+| [ai-strategy-coach.plan.md](ai-strategy-coach/ai-strategy-coach.plan.md) | 282 | Plan v0.1 — 15 FRs, 9 리스크, 7 사용자 결정사항 |
+| [ai-strategy-coach.design.md](ai-strategy-coach/ai-strategy-coach.design.md) | 1,016 | Design v0.2 — design-validator 84% → 92% 보강 |
+| [ai-strategy-coach.analysis.md](ai-strategy-coach/ai-strategy-coach.analysis.md) | 168 | Gap 분석 v1.0 — 97% match, Critical/High 0 |
+| [ai-strategy-coach.report.md](ai-strategy-coach/ai-strategy-coach.report.md) | 568 | 통합 완료 보고서 + Design v0.3 갱신 권장 + v0.6/v0.7/v2 로드맵 |
+
+**핵심 결과**
+
+- 백엔드 132/132 테스트 PASSED (이전 75 + 신규 57)
+- 13 REST 엔드포인트 (이전 9 + 신규 4: backtest/builtins/iterations/strategy-coach)
+- 신규 도메인: StrategyDef DSL, BacktestSplitResult, CoachResponse, IterationEntry, BuiltinIndicator, OptimizationGoal, TradingCosts
+- e2e 검증: BTC/USDT MA Crossover → IS -2.08% / OOS 0.00% / Stochastic 추천(⚠️ 빌트인 미존재)
+- **Design 단계 투자 효과 입증**: v0.4 첫 78%→95% / v0.5 첫 84%→**97%** (+2pt 깔끔한 시작)
+
+**핵심 안전 장치**
+- AST 화이트리스트 — Lambda/Subscript/Attribute/walrus 모두 거부
+- Prompt injection 방어 — 사용자 룰을 `json.dumps()` value로만 인용
+- 70/30 split graceful — OOS<30봉 시 IS만 반환 + warning
+- 추천 자동 적용 X — 항상 사용자 승인 필수
+- BPS 상한 — commission/slippage ≤100, kr_sell_tax ≤50
 
 ---
 
