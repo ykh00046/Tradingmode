@@ -78,7 +78,7 @@ project_version: 0.6.0
 - 멀티 타임프레임(MTF) — v0.7
 - TradingView 라벨/테이블 1:1 복제 (Pine 고유 UI) — 우리 React 차트로 대체
 - RSI 길이 동적 변경 (`length=14` 고정) — RSI 자체 파라미터는 IndicatorConfig.rsi_period 사용
-- ATR 길이 입력화 — 14 고정 (Pine 기본 따름)
+- ATR 길이 변경 UI — `IndicatorConfig.rpb_atr_length` 키는 expose하되 UI 입력 X (default 14 고정, Pine 기본 따름)
 - 정보 테이블 (Pine `var table info_tbl`) — 우리 차트 UI에 자연스럽게 녹임
 
 ---

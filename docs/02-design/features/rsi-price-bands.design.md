@@ -166,7 +166,9 @@ BuiltinIndicator(
 
 **RSI 역산 (Wilder RMA 가정)**
 
-`length = 14`, `n = length` (Wilder RMA). 다음 봉이 `close + x` 로 마감 시:
+**`n` 정의 — Pine 원전 표기**: `n = length - 1` (=13 when length=14). Pine 원본 한 줄 `n = length - 1` 그대로 채택. 본 설계의 모든 후속 의사코드도 `n = rsi_length - 1` 사용.
+
+다음 봉이 `close + x` 로 마감 시 (Wilder RMA):
 
 ```
 new_avg_gain = ((n-1) × avg_gain + max(x, 0)) / n
@@ -184,7 +186,7 @@ new_avg_gain = RS_target × avg_loss
 x = n × RS_target × avg_loss - (n-1) × avg_gain
 ```
 
-**Pine 코드 단순화**: `x = n × (RS × avg_loss − avg_gain)` — 분자 계수 `(n-1)` 대신 `n` 사용. ε 차이 발생 (n=14 기준 약 7% 오차 in `avg_gain` 계수). 본 구현은 **Pine과 동일 단순화**를 채택해 사용자 익숙한 출력 유지.
+**Pine 단순화 채택**: `x = n × (RS × avg_loss − avg_gain)` 단순 곱셈 형태 사용. Pine 원본이 양 항 모두 `(length-1)`로 통일한 단순화이며, 본 구현은 동일하게 `n = length - 1` 사용해 사용자 익숙한 출력 유지. NFR Correctness "오차 < 0.5%" 는 Pine 단순화 자체의 이론 오차 (1봉 후 도달 RSI vs target RSI) 기준이며, n 선택과는 별개.
 
 **상단 가격**: `RPB_UP = close + x` (단, `x > 0` AND `avg_loss > 0`)
 
@@ -261,8 +263,9 @@ def add_rpb(df, upper=None, lower=None, atr_mult=5.0, rs_cap_rsi=70.0,
     if not upper and not lower:
         return out
 
-    _ensure_min_length(out, max(rsi_length + 1, atr_length + 1), "RPB")
-    n = rsi_length
+    # Wilder RMA 워밍업 안정화에 충분한 길이 보장 (add_adx 패턴과 동일)
+    _ensure_min_length(out, max(rsi_length * 2, atr_length * 2), "RPB")
+    n = rsi_length - 1                                                       # Pine 원전 표기
 
     # --- avg_gain / avg_loss (RSI와 동일한 계산, 재사용 가능하면 사용) ---
     delta = out["close"].diff()
@@ -279,9 +282,12 @@ def add_rpb(df, upper=None, lower=None, atr_mult=5.0, rs_cap_rsi=70.0,
     atr = _wilder_ewm(tr, atr_length)
     atr_limit = atr * atr_mult
 
-    # --- RS Cap (하단만) ---
+    # --- RS Cap (하단만) — np.minimum 으로 NaN propagate (Pine math.min과 동일) ---
     rs_cap = rs_cap_rsi / (100.0 - rs_cap_rsi)
-    avg_gain_cap = pd.concat([avg_gain, rs_cap * avg_loss], axis=1).min(axis=1)
+    avg_gain_cap = pd.Series(
+        np.minimum(avg_gain.to_numpy(), (rs_cap * avg_loss).to_numpy()),
+        index=avg_gain.index,
+    )
 
     # --- 상단 밴드 ---
     for rsi_t in upper:
@@ -306,13 +312,20 @@ def add_rpb(df, upper=None, lower=None, atr_mult=5.0, rs_cap_rsi=70.0,
         )
         out[f"RPB_DN_{rsi_t}"] = price.where(valid, np.nan)
 
-    # --- BARS 컬럼 ---
-    for rsi_t in upper:
-        col = f"RPB_UP_{rsi_t}"
-        out[f"{col}_BARS"] = (out[col] - close) / atr  # 양수
-    for rsi_t in lower:
-        col = f"RPB_DN_{rsi_t}"
-        out[f"{col}_BARS"] = (out[col] - close) / atr  # 음수
+    # --- BARS 컬럼 (atr=0 시 inf 발생 → NaN 정규화) ---
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for rsi_t in upper:
+            col = f"RPB_UP_{rsi_t}"
+            out[f"{col}_BARS"] = (
+                ((out[col] - close) / atr)
+                .replace([np.inf, -np.inf], np.nan)
+            )
+        for rsi_t in lower:
+            col = f"RPB_DN_{rsi_t}"
+            out[f"{col}_BARS"] = (
+                ((out[col] - close) / atr)
+                .replace([np.inf, -np.inf], np.nan)
+            )
 
     return out
 ```
@@ -533,7 +546,11 @@ Tradingmode/
     - 토글 ON 시 SVG `<line>` 6개 + `<text>` 6개 + 단방향 옵션 분기
 12. [ ] `Tradingmode/styles.css` — `.rpb-line`, `.rpb-label` 약간 (Pine 색감 모방)
 13. [ ] `Tradingmode/strategy-coach-page.jsx` — `TEMPLATES`에 5번째 "RSI Imminent" 추가
-14. [ ] e2e Playwright — Chart 토글 ON 후 RPB 라인 6개 확인 + Strategy Coach 템플릿 동작
+14. [ ] e2e Playwright 시나리오:
+    - 차트 페이지 → `[data-testid="indicator-toggle-rpb"]` 클릭 → `.rpb-line` count == 6
+    - 우측 끝 `.rpb-label` count == 6, 텍스트 패턴 `RPB_UP_70 ... (+5.2%)` 매칭
+    - Strategy Coach → "RSI Imminent" 템플릿 클릭 → buy_when 텍스트 = `close < RPB_DN_30 and RPB_DN_30_BARS > -1.5`
+    - 백테스트 실행 → IS/OOS 결과 표시 (값 정확성은 별도)
 
 #### 검증 (~30분)
 15. [ ] `start.bat` → BTC/USDT 1년치 차트 → RPB ON → 6 라인 표시 확인
@@ -554,4 +571,5 @@ Tradingmode/
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 0.1 | 2026-05-02 | 초안 — Pine 알고리즘 채택 + 양방·BARS 보완. 12 컬럼 명세, IndicatorConfig 확장, BUILTIN 등록, 차트 오버레이 설계 | 900033@interojo.com |
+| 0.1 | 2026-05-02 | 초안 — Pine 알고리즘 채택 + 양방·BARS 보완 | 900033@interojo.com |
+| 0.2 | 2026-05-02 | design-validator 91% → 95%+ 후속 정리: H-1 `n = rsi_length - 1` (Pine 원전 표기) 명시, H-2 워밍업 `2N` 보장(add_adx 패턴), M-2 RS Cap을 `np.minimum`으로 NaN propagate, M-4 BARS inf→NaN 정규화 + np.errstate 컨텍스트, M-3 Playwright e2e selector 구체화. Plan §2.2 ATR 길이 키 expose 명확화. | 900033@interojo.com |
