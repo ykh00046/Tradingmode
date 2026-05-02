@@ -1,9 +1,22 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": [],
-  "primaryFeature": null,
+  "activeFeatures": ["rsi-price-bands"],
+  "primaryFeature": "rsi-price-bands",
   "features": {
+    "rsi-price-bands": {
+      "phase": "plan",
+      "level": "Dynamic",
+      "createdAt": "2026-05-02",
+      "documents": {
+        "plan": "docs/01-plan/features/rsi-price-bands.plan.md",
+        "design": null,
+        "analysis": null,
+        "report": null
+      },
+      "matchRate": null,
+      "iteration": 0
+    },
     "ai-strategy-coach": {
       "phase": "archived",
       "level": "Dynamic",
