@@ -1,18 +1,33 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": ["rsi-price-bands"],
-  "primaryFeature": "rsi-price-bands",
+  "activeFeatures": ["ux-improvements"],
+  "primaryFeature": "ux-improvements",
   "features": {
-    "rsi-price-bands": {
-      "phase": "completed",
+    "ux-improvements": {
+      "phase": "plan",
       "level": "Dynamic",
       "createdAt": "2026-05-02",
       "documents": {
-        "plan": "docs/01-plan/features/rsi-price-bands.plan.md",
-        "design": "docs/02-design/features/rsi-price-bands.design.md",
-        "analysis": "docs/03-analysis/rsi-price-bands.analysis.md",
-        "report": "docs/04-report/rsi-price-bands.report.md"
+        "plan": "docs/01-plan/features/ux-improvements.plan.md",
+        "design": null,
+        "analysis": null,
+        "report": null
+      },
+      "matchRate": null,
+      "iteration": 0
+    },
+    "rsi-price-bands": {
+      "phase": "archived",
+      "level": "Dynamic",
+      "createdAt": "2026-05-02",
+      "archivedAt": "2026-05-02",
+      "archivedTo": "docs/archive/2026-05/rsi-price-bands/",
+      "documents": {
+        "plan": "docs/archive/2026-05/rsi-price-bands/rsi-price-bands.plan.md",
+        "design": "docs/archive/2026-05/rsi-price-bands/rsi-price-bands.design.md",
+        "analysis": "docs/archive/2026-05/rsi-price-bands/rsi-price-bands.analysis.md",
+        "report": "docs/archive/2026-05/rsi-price-bands/rsi-price-bands.report.md"
       },
       "matchRate": 98,
       "iteration": 0
