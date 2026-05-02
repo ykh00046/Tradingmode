@@ -72,6 +72,12 @@ class IndicatorConfig(TypedDict, total=False):
     macd: tuple[int, int, int]          # default (12, 26, 9)
     bbands: tuple[int, float]           # default (20, 2.0)
     adx_length: int                     # default 14
+    # RSI Price Band (RPB) — RSI 역산 가격 밴드
+    rpb_upper: list[int]                # default [70, 75, 80] (overbought 임계값)
+    rpb_lower: list[int]                # default [30, 25, 20] (oversold 임계값)
+    rpb_atr_mult: float                 # default 5.0 (ATR × N 거리 필터)
+    rpb_rs_cap_rsi: float               # default 70.0 (하단 밴드 RS Cap)
+    rpb_atr_length: int                 # default 14 (ATR 길이, Pine 기본)
 
 
 # =============================================================================

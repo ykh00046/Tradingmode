@@ -5,7 +5,7 @@
   "primaryFeature": "rsi-price-bands",
   "features": {
     "rsi-price-bands": {
-      "phase": "design",
+      "phase": "do",
       "level": "Dynamic",
       "createdAt": "2026-05-02",
       "documents": {

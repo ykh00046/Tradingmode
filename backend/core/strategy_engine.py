@@ -404,6 +404,23 @@ BUILTIN_INDICATORS: list[BuiltinIndicator] = [
         category="volatility",
     ),
     BuiltinIndicator(
+        name="RSI Price Band",
+        columns=[
+            "RPB_UP_70", "RPB_UP_75", "RPB_UP_80",
+            "RPB_DN_30", "RPB_DN_25", "RPB_DN_20",
+            "RPB_UP_70_BARS", "RPB_UP_75_BARS", "RPB_UP_80_BARS",
+            "RPB_DN_30_BARS", "RPB_DN_25_BARS", "RPB_DN_20_BARS",
+        ],
+        params={
+            "upper": [70, 75, 80],
+            "lower": [30, 25, 20],
+            "atr_mult": 5.0,
+            "rs_cap_rsi": 70.0,
+        },
+        description="RSI 역산 가격 밴드 — 다음 봉이 X로 마감하면 RSI=N. _BARS = ATR 단위 거리(음수=이미 통과)",
+        category="momentum",
+    ),
+    BuiltinIndicator(
         name="ADX",
         columns=["ADX_14", "DMP_14", "DMN_14"],
         params={"length": 14},

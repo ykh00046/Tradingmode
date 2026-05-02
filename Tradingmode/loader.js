@@ -70,6 +70,31 @@
         up:  getColumn(indDict, 'BBU_20_2.0_2.0', candleCount),
         lo:  getColumn(indDict, 'BBL_20_2.0_2.0', candleCount),
       },
+      // RSI Price Band — RSI 역산 가격 밴드 (v0.6)
+      rpb: {
+        up: {
+          70: getColumn(indDict, 'RPB_UP_70', candleCount),
+          75: getColumn(indDict, 'RPB_UP_75', candleCount),
+          80: getColumn(indDict, 'RPB_UP_80', candleCount),
+        },
+        dn: {
+          30: getColumn(indDict, 'RPB_DN_30', candleCount),
+          25: getColumn(indDict, 'RPB_DN_25', candleCount),
+          20: getColumn(indDict, 'RPB_DN_20', candleCount),
+        },
+        bars: {
+          up: {
+            70: getColumn(indDict, 'RPB_UP_70_BARS', candleCount),
+            75: getColumn(indDict, 'RPB_UP_75_BARS', candleCount),
+            80: getColumn(indDict, 'RPB_UP_80_BARS', candleCount),
+          },
+          dn: {
+            30: getColumn(indDict, 'RPB_DN_30_BARS', candleCount),
+            25: getColumn(indDict, 'RPB_DN_25_BARS', candleCount),
+            20: getColumn(indDict, 'RPB_DN_20_BARS', candleCount),
+          },
+        },
+      },
     };
 
     // Compute EMA12 on the frontend — backend uses it internally for MACD only.

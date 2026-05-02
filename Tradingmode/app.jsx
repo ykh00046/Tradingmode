@@ -353,6 +353,10 @@ function RightPanel({ instrument, indicators, setIndicators, signalsOn, setSigna
           <IndToggle label="MA 60" color="oklch(0.70 0.13 230)" on={indicators.ma60} onChange={(v) => setIndicators({ ...indicators, ma60: v })} />
           <IndToggle label="MA 120" color="oklch(0.62 0.18 320)" on={indicators.ma120} onChange={(v) => setIndicators({ ...indicators, ma120: v })} />
           <IndToggle label="볼린저밴드 (20,2)" color="rgba(150,180,220,0.7)" on={indicators.bb} onChange={(v) => setIndicators({ ...indicators, bb: v })} />
+          <IndToggle label="RSI Price Band" color="oklch(0.62 0.22 25)" on={indicators.rpb} onChange={(v) => setIndicators({ ...indicators, rpb: v })} data-testid="indicator-toggle-rpb" />
+          {indicators.rpb && (
+            <IndToggle label="└ 양방향 표시" color="rgba(180,180,180,0.5)" on={indicators.rpbBoth} onChange={(v) => setIndicators({ ...indicators, rpbBoth: v })} />
+          )}
           <IndToggle label="신호 마커" color="oklch(0.78 0.16 75)" on={signalsOn} onChange={setSignalsOn} />
           <IndToggle label="추세 영역 음영" color={upColor} on={trendBand} onChange={setTrendBand} />
         </div>
@@ -403,9 +407,9 @@ function StatusCell({ label, value, tone, sub }) {
   );
 }
 
-function IndToggle({ label, color, on, onChange }) {
+function IndToggle({ label, color, on, onChange, ...rest }) {
   return (
-    <button className={'ind-toggle' + (on ? ' on' : '')} onClick={() => onChange(!on)}>
+    <button className={'ind-toggle' + (on ? ' on' : '')} onClick={() => onChange(!on)} {...rest}>
       <span className="ind-swatch" style={{ background: color }} />
       <span className="ind-label">{label}</span>
       <span className={'ind-state mono' + (on ? ' on' : '')}>{on ? 'ON' : 'OFF'}</span>
@@ -686,7 +690,7 @@ function App() {
   const [current, setCurrent] = useState('BTC/USDT');
   const [now, setNow] = useState(Date.now());
 
-  const [indicators, setIndicators] = useState({ ma20: true, ma60: true, ma120: false, bb: true });
+  const [indicators, setIndicators] = useState({ ma20: true, ma60: true, ma120: false, bb: true, rpb: false, rpbBoth: false });
   const [signalsOn, setSignalsOn] = useState(true);
   const [trendBand, setTrendBand] = useState(true);
   const [dataState, setDataState] = useState(

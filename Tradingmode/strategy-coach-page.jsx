@@ -32,6 +32,11 @@ const TEMPLATES = [
     buy_when: 'close < BBL_20_2.0_2.0 and RSI_14 < 40',
     sell_when: 'close > BBM_20_2.0_2.0',
   },
+  {
+    name: 'RSI Imminent',
+    buy_when: 'close < RPB_DN_30 and RPB_DN_30_BARS > -1.5',
+    sell_when: 'close > RPB_UP_70',
+  },
 ];
 
 // role → (target field, combinator)

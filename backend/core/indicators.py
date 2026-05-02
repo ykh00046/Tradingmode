@@ -7,6 +7,7 @@ appended. The original DataFrame is never mutated.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from core.types.errors import InsufficientDataError
@@ -21,6 +22,11 @@ DEFAULT_RSI_PERIOD: int = 14
 DEFAULT_MACD: tuple[int, int, int] = (12, 26, 9)
 DEFAULT_BBANDS: tuple[int, float] = (20, 2.0)
 DEFAULT_ADX_LENGTH: int = 14
+DEFAULT_RPB_UPPER: list[int] = [70, 75, 80]
+DEFAULT_RPB_LOWER: list[int] = [30, 25, 20]
+DEFAULT_RPB_ATR_MULT: float = 5.0
+DEFAULT_RPB_RS_CAP_RSI: float = 70.0
+DEFAULT_RPB_ATR_LENGTH: int = 14
 
 
 # =============================================================================
@@ -170,6 +176,106 @@ def add_adx(df: pd.DataFrame, length: int = DEFAULT_ADX_LENGTH) -> pd.DataFrame:
     return out
 
 
+def add_rpb(
+    df: pd.DataFrame,
+    upper: list[int] | None = None,
+    lower: list[int] | None = None,
+    atr_mult: float = DEFAULT_RPB_ATR_MULT,
+    rs_cap_rsi: float = DEFAULT_RPB_RS_CAP_RSI,
+    rsi_length: int = DEFAULT_RSI_PERIOD,
+    atr_length: int = DEFAULT_RPB_ATR_LENGTH,
+) -> pd.DataFrame:
+    """RSI Price Band — Wilder RMA 역산으로 "다음 봉이 X로 마감하면 RSI=N" 가격 계산.
+
+    12개 컬럼 (가격 6 + ATR 단위 거리 6):
+        RPB_UP_<rsi>, RPB_DN_<rsi>, RPB_UP_<rsi>_BARS, RPB_DN_<rsi>_BARS
+
+    원본: 사용자 제공 Pine Script v5 "RSI Price Band". n = rsi_length - 1 (Pine
+    원전 표기) 단순화 채택. 양방향 항상 계산하고, ATR×mult 거리 필터·RS Cap·
+    음수가 가드 모두 적용. 워밍업 안정화에 ``2 × max(rsi, atr)`` 봉 필요.
+
+    빈 리스트 (``upper=[]``, ``lower=[]``) 시 해당 측 컬럼 모두 생략.
+    잘못된 임계값(상단 ≤ 50, 하단 ≥ 50)은 silently filter.
+    """
+    out = df.copy()
+    upper = list(upper) if upper is not None else list(DEFAULT_RPB_UPPER)
+    lower = list(lower) if lower is not None else list(DEFAULT_RPB_LOWER)
+
+    # 50 경계 외 값은 silently 무시 (사용자 친화)
+    upper = [u for u in upper if 50 < u < 100]
+    lower = [l for l in lower if 0 < l < 50]                                  # noqa: E741
+    if not upper and not lower:
+        return out
+
+    # Wilder RMA 워밍업 안정화 — add_adx 패턴 일치 (2N봉 필요)
+    _ensure_min_length(out, max(rsi_length * 2, atr_length * 2), "RPB")
+    n = rsi_length - 1                                                       # Pine 원전 표기
+
+    close = out["close"]
+    high = out["high"]
+    low = out["low"]
+
+    # avg_gain / avg_loss (RSI와 동일)
+    delta = close.diff()
+    avg_gain = _wilder_ewm(delta.clip(lower=0), rsi_length)
+    avg_loss = _wilder_ewm((-delta).clip(lower=0), rsi_length)
+
+    # Wilder ATR
+    tr = pd.concat(
+        [
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr = _wilder_ewm(tr, atr_length)
+    atr_limit = atr * atr_mult
+
+    # RS Cap (하단만) — np.minimum 으로 Pine math.min 동등 NaN propagate
+    rs_cap = rs_cap_rsi / (100.0 - rs_cap_rsi)
+    avg_gain_cap = pd.Series(
+        np.minimum(avg_gain.to_numpy(), (rs_cap * avg_loss).to_numpy()),
+        index=avg_gain.index,
+    )
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # Upper bands: x = n × (rs × avg_loss − avg_gain), price = close + x
+        for rsi_t in upper:
+            rs = rsi_t / (100.0 - rsi_t)
+            x = n * (rs * avg_loss - avg_gain)
+            price = close + x
+            valid = (x > 0) & (avg_loss > 0) & ((price - close) <= atr_limit)
+            out[f"RPB_UP_{rsi_t}"] = price.where(valid, np.nan)
+
+        # Lower bands: y = n × (avg_gain_cap / rs − avg_loss), price = close − y
+        for rsi_t in lower:
+            rs = rsi_t / (100.0 - rsi_t)
+            y = n * (avg_gain_cap / rs - avg_loss)
+            price = close - y
+            valid = (
+                (avg_gain_cap > 0)
+                & (y > 0)
+                & (price > 0)
+                & ((close - price) <= atr_limit)
+            )
+            out[f"RPB_DN_{rsi_t}"] = price.where(valid, np.nan)
+
+        # BARS 컬럼: ATR 단위 거리 (상단 양수, 하단 음수). atr=0 → inf → NaN 정규화
+        for rsi_t in upper:
+            col = f"RPB_UP_{rsi_t}"
+            out[f"{col}_BARS"] = (
+                ((out[col] - close) / atr).replace([np.inf, -np.inf], np.nan)
+            )
+        for rsi_t in lower:
+            col = f"RPB_DN_{rsi_t}"
+            out[f"{col}_BARS"] = (
+                ((out[col] - close) / atr).replace([np.inf, -np.inf], np.nan)
+            )
+
+    return out
+
+
 # =============================================================================
 # Bulk computation
 # =============================================================================
@@ -191,4 +297,18 @@ def compute(df: pd.DataFrame, config: IndicatorConfig | None = None) -> pd.DataF
     out = add_bbands(out, length=bb_len, std=bb_std)
 
     out = add_adx(out, length=cfg.get("adx_length", DEFAULT_ADX_LENGTH))
+
+    # RPB — opt-out: 빈 리스트 시 비활성. 그 외 기본 활성.
+    rpb_upper = cfg.get("rpb_upper", DEFAULT_RPB_UPPER)
+    rpb_lower = cfg.get("rpb_lower", DEFAULT_RPB_LOWER)
+    if rpb_upper or rpb_lower:
+        out = add_rpb(
+            out,
+            upper=rpb_upper,
+            lower=rpb_lower,
+            atr_mult=cfg.get("rpb_atr_mult", DEFAULT_RPB_ATR_MULT),
+            rs_cap_rsi=cfg.get("rpb_rs_cap_rsi", DEFAULT_RPB_RS_CAP_RSI),
+            rsi_length=cfg.get("rsi_period", DEFAULT_RSI_PERIOD),
+            atr_length=cfg.get("rpb_atr_length", DEFAULT_RPB_ATR_LENGTH),
+        )
     return out

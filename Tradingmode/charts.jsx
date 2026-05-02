@@ -188,6 +188,70 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
       {indicators.ma60 && <path d={pathFrom(ind.ma60)} fill="none" stroke="oklch(0.70 0.13 230)" strokeWidth="1.2" />}
       {indicators.ma120 && <path d={pathFrom(ind.ma120)} fill="none" stroke="oklch(0.62 0.18 320)" strokeWidth="1.2" opacity="0.8" />}
 
+      {/* RSI Price Bands — Pine red(상단) / green(하단), inner 진하게 / outer 50% / mid 굵게 */}
+      {indicators.rpb && ind.rpb && (() => {
+        const upColorRpb = 'oklch(0.62 0.22 25)';   // red
+        const dnColorRpb = 'oklch(0.65 0.18 145)';  // green
+        // currentRsi가 50 이상이면 상단만, 미만이면 하단만 — Pine 모방 단방향
+        // 토글로 강제 양방향 표시 가능 (indicators.rpbBoth)
+        const lastRsi = ind.rsi14[ind.rsi14.length - 1];
+        const showUp = indicators.rpbBoth || lastRsi == null || lastRsi >= 50;
+        const showDn = indicators.rpbBoth || lastRsi == null || lastRsi < 50;
+        const lineProps = (color, opacity, width, dash) => ({
+          fill: 'none', stroke: color, strokeWidth: width,
+          strokeOpacity: opacity, strokeDasharray: dash || undefined,
+        });
+        return (
+          <g className="rpb-overlay">
+            {showUp && (
+              <>
+                <path className="rpb-line" data-rpb="UP_80" d={pathFrom(ind.rpb.up[80])} {...lineProps(upColorRpb, 0.5, 1, '4 3')} />
+                <path className="rpb-line" data-rpb="UP_75" d={pathFrom(ind.rpb.up[75])} {...lineProps(upColorRpb, 0.85, 2)} />
+                <path className="rpb-line" data-rpb="UP_70" d={pathFrom(ind.rpb.up[70])} {...lineProps(upColorRpb, 1, 1)} />
+              </>
+            )}
+            {showDn && (
+              <>
+                <path className="rpb-line" data-rpb="DN_30" d={pathFrom(ind.rpb.dn[30])} {...lineProps(dnColorRpb, 1, 1)} />
+                <path className="rpb-line" data-rpb="DN_25" d={pathFrom(ind.rpb.dn[25])} {...lineProps(dnColorRpb, 0.85, 2)} />
+                <path className="rpb-line" data-rpb="DN_20" d={pathFrom(ind.rpb.dn[20])} {...lineProps(dnColorRpb, 0.5, 1, '4 3')} />
+              </>
+            )}
+            {/* Right-edge labels (Pine 모방) */}
+            {[
+              showUp && [80, ind.rpb.up[80], upColorRpb, 0.5],
+              showUp && [75, ind.rpb.up[75], upColorRpb, 0.85],
+              showUp && [70, ind.rpb.up[70], upColorRpb, 1],
+              showDn && [30, ind.rpb.dn[30], dnColorRpb, 1],
+              showDn && [25, ind.rpb.dn[25], dnColorRpb, 0.85],
+              showDn && [20, ind.rpb.dn[20], dnColorRpb, 0.5],
+            ].filter(Boolean).map(([rsi_t, series, color, op]) => {
+              const lastIdx = series.length - 1;
+              let v = null;
+              for (let k = lastIdx; k >= 0; k--) { if (series[k] != null) { v = series[k]; break; } }
+              if (v == null) return null;
+              const lastClose = slice[slice.length - 1]?.c;
+              const pct = lastClose ? ((v - lastClose) / lastClose * 100).toFixed(1) : '';
+              const sign = pct >= 0 ? '+' : '';
+              return (
+                <text
+                  key={'rpb-lbl-' + rsi_t}
+                  className="rpb-label mono"
+                  x={W - 4}
+                  y={yAt(v) - 2}
+                  textAnchor="end"
+                  fill={color}
+                  fillOpacity={op}
+                  fontSize="9"
+                >
+                  RSI {rsi_t} ({sign}{pct}%)
+                </text>
+              );
+            })}
+          </g>
+        );
+      })()}
+
       {/* Candles */}
       {slice.map((c, i) => {
         const x = xAt(i);
