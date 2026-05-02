@@ -5,12 +5,12 @@
   "primaryFeature": "rsi-price-bands",
   "features": {
     "rsi-price-bands": {
-      "phase": "plan",
+      "phase": "design",
       "level": "Dynamic",
       "createdAt": "2026-05-02",
       "documents": {
         "plan": "docs/01-plan/features/rsi-price-bands.plan.md",
-        "design": null,
+        "design": "docs/02-design/features/rsi-price-bands.design.md",
         "analysis": null,
         "report": null
       },
