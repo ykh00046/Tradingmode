@@ -38,7 +38,7 @@ function useViewportWidth() {
 }
 
 // ─── Top bar (responsive 1280/1024 — Design v0.3 §5.3) ───────
-function TopBar({ now, fxKRW, btcSpot, marketState }) {
+function TopBar({ now, fxKRW, btcSpot, marketState, snapStale }) {
   const vw = useViewportWidth();
   const compact = vw < 1280;
   const minimal = vw < 1024;
@@ -76,9 +76,9 @@ function TopBar({ now, fxKRW, btcSpot, marketState }) {
         ))}
       </div>
       <div className="topbar-right">
-        <div className="market-state">
-          <span className="dot live" />
-          <span>{marketState}</span>
+        <div className="market-state" title={snapStale ? '시세 업데이트 지연 — 마지막 성공 후 60초 경과' : marketState}>
+          <span className={'dot ' + (snapStale ? 'stale' : 'live')} />
+          <span>{snapStale ? marketState + ' · STALE' : marketState}</span>
         </div>
         <div className="clock">
           <span className="muted">KST</span>
@@ -1023,6 +1023,10 @@ function App() {
   const [retryNonce, setRetryNonce] = useState(0);
   const [dataVersion, setDataVersion] = useState(0);   // bumped after loader swaps DATA
   const [marketSnap, setMarketSnap] = useState(null);
+  // Tracks when marketSnap was last successfully updated, in ms. Used together
+  // with the `now` 1s ticker to render a STALE badge when polling has been
+  // failing for >60s without forcing the UI to drop the last good value.
+  const [marketSnapAt, setMarketSnapAt] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -1084,6 +1088,7 @@ function App() {
         if (alive && mySeq > lastApplied) {
           lastApplied = mySeq;
           setMarketSnap(snap);
+          setMarketSnapAt(Date.now());
         }
       } catch (_) { /* TopBar: silent fail */ }
     }
@@ -1143,13 +1148,14 @@ function App() {
   }
 
   // Use TopBar snapshot from backend when available, fall back to derived values.
+  const snapStale = marketSnapAt > 0 && (now - marketSnapAt > 60_000);
   const fxKRW = (marketSnap && marketSnap.usd_krw && marketSnap.usd_krw.value) || 1382.40;
   const btcSpot = (marketSnap && marketSnap.btc && marketSnap.btc.value)
     || data['BTC/USDT'].candles[data['BTC/USDT'].candles.length - 1].c;
 
   return (
     <div className="app" style={{ ['--up']: upColor, ['--down']: downColor }}>
-      <TopBar now={now} fxKRW={fxKRW} btcSpot={btcSpot} marketState="MARKET OPEN · KOSPI" />
+      <TopBar now={now} fxKRW={fxKRW} btcSpot={btcSpot} marketState="MARKET OPEN · KOSPI" snapStale={snapStale} />
 
       <div className="page-tabs">
         <button className={'pt-btn' + (page === 'chart' ? ' active' : '')} onClick={() => setPage('chart')}>

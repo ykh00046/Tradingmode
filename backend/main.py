@@ -10,6 +10,7 @@ OpenAPI docs are auto-served at ``/docs``.
 from __future__ import annotations
 
 import os
+import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -27,15 +28,34 @@ from core.types.errors import (
     CacheError,
     DataSourceError,
     InsufficientDataError,
+    InvalidStrategyError,
     InvalidSymbolError,
     PortfolioError,
     TradingToolError,
 )
 from lib.logger import get_logger
 
-VERSION = "0.4.1"
+# Bumped from 0.4.1 to reflect three shipped PDCA cycles since the original
+# trading-analysis-tool baseline (rsi-price-bands → ux-improvements →
+# longer-intervals) plus the comprehensive-review fixes.
+VERSION = "0.9.0"
+_STARTED_AT = time.monotonic()
 
 log = get_logger(__name__)
+
+
+def _cache_writable() -> bool:
+    """Probe whether the OHLCV cache directory is writable. Cheap (sub-ms)."""
+    try:
+        from lib import cache
+
+        root = cache.cache_root()
+        probe = root / ".write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
 
 
 # =============================================================================
@@ -78,8 +98,6 @@ app.add_middleware(
 # Exception handlers
 # =============================================================================
 
-
-from core.types.errors import InvalidStrategyError                            # noqa: E402
 
 _ERROR_MAP: dict[type[TradingToolError], tuple[int, str]] = {
     InvalidStrategyError: (400, "INVALID_INPUT"),
@@ -133,7 +151,16 @@ async def _validation_error_handler(
 
 @app.get("/api/health", response_model=HealthResponse, tags=["health"])
 def health() -> HealthResponse:
-    return HealthResponse(status="ok", version=VERSION)
+    """Self-diagnosis endpoint — `status` for liveness, additional fields for
+    operational sanity checks (deploy verification, on-call triage)."""
+    return HealthResponse(
+        status="ok",
+        version=VERSION,
+        uptime_seconds=round(time.monotonic() - _STARTED_AT, 1),
+        groq_configured=bool(os.environ.get("GROQ_API_KEY")),
+        cache_writable=_cache_writable(),
+        cors_origins_count=len(_cors_origins),
+    )
 
 
 _API_PREFIX = "/api"

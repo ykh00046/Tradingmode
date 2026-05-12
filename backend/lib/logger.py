@@ -24,12 +24,14 @@ def _configure() -> None:
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
-
     root = logging.getLogger()
-    root.handlers.clear()
-    root.addHandler(handler)
+    # NB: only attach our handler if the root has none yet. uvicorn / pytest
+    # install their own handlers; wiping them (the previous behaviour) caused
+    # uvicorn access logs to disappear and pytest log capture to break.
+    if not root.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+        root.addHandler(handler)
     root.setLevel(level)
 
     # Quiet down noisy third-party libraries unless we are at DEBUG.

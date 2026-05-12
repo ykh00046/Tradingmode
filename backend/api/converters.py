@@ -65,7 +65,9 @@ def _none_if_nan(x: Any) -> float | None:
 
 
 _OHLCV_KEEP = ("open", "high", "low", "close", "volume")
-_INDICATOR_PREFIXES = ("SMA_", "EMA_", "RSI_", "MACD", "BB", "ADX", "DMP_", "DMN_", "STOCH", "RPB_")
+# STOCH was deferred to v2 and is never computed by core.indicators; removed
+# from the prefix list to avoid implying support.
+_INDICATOR_PREFIXES = ("SMA_", "EMA_", "RSI_", "MACD", "BB", "ADX", "DMP_", "DMN_", "RPB_")
 
 
 def df_to_candles(df: pd.DataFrame) -> list[api_schemas.Candle]:

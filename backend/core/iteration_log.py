@@ -162,7 +162,9 @@ def read(
             details={"path": str(path)},
         ) from e
     df = df.sort_values("timestamp", ascending=False).head(limit)
-    return [_from_row(row) for _, row in df.iterrows()]
+    # to_dict('records') is markedly faster than iterrows() for non-trivial
+    # logs (no Series construction per row).
+    return [_from_row(row) for row in df.to_dict("records")]
 
 
 def compare(

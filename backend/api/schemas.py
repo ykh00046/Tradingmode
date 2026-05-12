@@ -270,6 +270,13 @@ class MarketSnapshotResponse(_JsonSafeBase):
 class HealthResponse(_JsonSafeBase):
     status: Literal["ok"]
     version: str
+    # v0.9 — environment self-diagnosis (helps ops verify a deploy without
+    # peeking at internals). All fields optional so existing consumers that
+    # only read {status, version} continue to work.
+    uptime_seconds: float | None = None
+    groq_configured: bool | None = None
+    cache_writable: bool | None = None
+    cors_origins_count: int | None = None
 
 
 # =============================================================================

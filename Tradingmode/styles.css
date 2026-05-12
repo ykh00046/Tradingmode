@@ -136,6 +136,11 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   box-shadow: 0 0 0 0 var(--up);
   animation: pulse 1.6s ease-out infinite;
 }
+.dot.stale {
+  background: oklch(0.72 0.18 50);   /* amber — distinct from up/down */
+  box-shadow: 0 0 0 0 transparent;
+  opacity: 0.85;
+}
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 oklch(0.72 0.18 145 / 0.5); }
   70% { box-shadow: 0 0 0 6px oklch(0.72 0.18 145 / 0); }

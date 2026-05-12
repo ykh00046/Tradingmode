@@ -308,11 +308,25 @@
 
     onProgress({ done: 0, total: universe.length, current: null });
 
+    // 1-shot retry with a short backoff before giving up on a symbol —
+    // transient 5xx / network blips would otherwise drop the row to synthetic
+    // for the entire session.
+    async function loadInstrumentWithRetry(meta) {
+      try {
+        return await loadInstrument(meta, { signal: opts.signal });
+      } catch (e) {
+        // Don't retry user-aborted requests (symbol change, unmount).
+        if (e && (e.name === 'AbortError' || (e.code && e.code === 'ABORTED'))) throw e;
+        await new Promise(function (r) { setTimeout(r, 500); });
+        return await loadInstrument(meta, { signal: opts.signal });
+      }
+    }
+
     for (var i = 0; i < universe.length; i += concurrency) {
       var batch = universe.slice(i, i + concurrency);
       await Promise.all(batch.map(async function (meta) {
         try {
-          var inst = await loadInstrument(meta, { signal: opts.signal });
+          var inst = await loadInstrumentWithRetry(meta);
           inst.synthetic = false;
           data[meta.symbol] = inst;
         } catch (e) {

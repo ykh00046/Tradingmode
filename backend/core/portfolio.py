@@ -91,6 +91,17 @@ def load_holdings_from_csv(path: str | Path) -> Portfolio:
 # =============================================================================
 
 
+# Static fallback FX rates used only when FinanceDataReader is unreachable.
+# Tuned periodically — log a warning when consulted so we notice prolonged
+# upstream outages.
+_FX_FALLBACK_USDKRW = 1380.0
+_FX_FALLBACKS: dict[str, float] = {
+    "USDT/KRW": _FX_FALLBACK_USDKRW,
+    "USD/KRW":  _FX_FALLBACK_USDKRW,
+    "KRW/USD":  1.0 / _FX_FALLBACK_USDKRW,
+}
+
+
 def _static_fx_quote(pair: str, rate: float, as_of: pd.Timestamp, source: str = "static") -> FxQuote:
     return FxQuote(pair=pair, rate=rate, as_of=as_of, source=source)
 
@@ -118,11 +129,7 @@ def _fetch_fx(pair: str, as_of: pd.Timestamp) -> FxQuote:
     if pair in {"USDT/USD", "USD/USDT"}:
         return _static_fx_quote(pair, 1.0, as_of)
 
-    fallback = {
-        "USDT/KRW": 1380.0,
-        "USD/KRW": 1380.0,
-        "KRW/USD": 1 / 1380.0,
-    }.get(pair, 1.0)
+    fallback = _FX_FALLBACKS.get(pair, 1.0)
     try:
         import FinanceDataReader as fdr                                      # type: ignore
 
