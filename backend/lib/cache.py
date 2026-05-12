@@ -1,7 +1,10 @@
 """Filesystem cache for OHLCV (parquet) and AI commentary (JSON).
 
 Path safety: every cache operation resolves to a path *under* ``CACHE_DIR``;
-attempts to escape via ``..`` raise ``CacheError``.
+attempts to escape via ``..`` raise ``CacheError``. In addition,
+``_safe_segment`` whitelists characters allowed in user-controlled path
+segments (symbol, model name) so a malformed input fails before touching the
+filesystem rather than producing odd parquet paths.
 
 Behaviour: I/O failures degrade gracefully — callers can decide whether to
 fall back to direct fetch or surface the error. A bare ``except`` here would
@@ -12,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +27,21 @@ from core.types.errors import CacheError
 from lib.logger import get_logger
 
 log = get_logger(__name__)
+
+# Allow alphanumerics + . _ - / (slash retained for crypto pair symbols
+# like BTC/USDT before slash-stripping at the adapter; rejected separators
+# like ".." or backslash never match this pattern).
+_SAFE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
+def _safe_segment(value: str, *, field: str) -> str:
+    """Whitelist user-controlled path segments before they touch the FS."""
+    if not isinstance(value, str) or not value or not _SAFE_SEGMENT_RE.match(value):
+        raise CacheError(
+            f"invalid {field} for cache path",
+            details={"field": field, "value": value},
+        )
+    return value
 
 
 # =============================================================================
@@ -57,7 +76,12 @@ def _safe_resolve(relative: str) -> Path:
 
 
 def ohlcv_cache_path(market: str, symbol: str, interval: str, start: str, end: str) -> Path:
-    return _safe_resolve(f"{market}/{symbol}/{interval}/{start}_{end}.parquet")
+    return _safe_resolve(
+        f"{_safe_segment(market, field='market')}/"
+        f"{_safe_segment(symbol, field='symbol')}/"
+        f"{_safe_segment(interval, field='interval')}/"
+        f"{_safe_segment(start, field='start')}_{_safe_segment(end, field='end')}.parquet"
+    )
 
 
 def load_ohlcv(path: Path) -> pd.DataFrame | None:
@@ -76,9 +100,13 @@ def load_ohlcv(path: Path) -> pd.DataFrame | None:
 
 
 def save_ohlcv(path: Path, df: pd.DataFrame) -> None:
+    """Atomic write: stage to ``<name>.tmp`` then ``os.replace`` so a crash
+    mid-write can never leave a corrupt parquet on disk for the next read."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(path)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        df.to_parquet(tmp)
+        os.replace(tmp, path)
         log.debug("cache save: %s (%d rows)", path, len(df))
     except Exception as e:
         raise CacheError(f"failed to write parquet cache: {path}", details={"path": str(path)}) from e
@@ -103,8 +131,14 @@ def load_or_fetch_ohlcv(
 
 
 def ai_cache_path(symbol: str, signal_kind: str, timestamp_ms: int, model: str) -> Path:
-    safe_model = model.replace("/", "_").replace(":", "_")
-    return _safe_resolve(f"_ai/{symbol}/{signal_kind}/{timestamp_ms}_{safe_model}.json")
+    # Strip path-unsafe chars from the model name (provider/name:tag),
+    # then validate every segment.
+    safe_model = re.sub(r"[^A-Za-z0-9._-]", "_", model)
+    return _safe_resolve(
+        f"_ai/{_safe_segment(symbol, field='symbol')}/"
+        f"{_safe_segment(signal_kind, field='signal_kind')}/"
+        f"{int(timestamp_ms)}_{_safe_segment(safe_model, field='model')}.json"
+    )
 
 
 def _json_default(obj: Any) -> Any:
@@ -128,9 +162,11 @@ def load_ai(path: Path) -> dict | None:
 def save_ai(path: Path, payload: dict) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(
             json.dumps(payload, default=_json_default, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        os.replace(tmp, path)
     except Exception as e:
         raise CacheError(f"failed to write AI cache: {path}", details={"path": str(path)}) from e

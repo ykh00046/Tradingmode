@@ -8,7 +8,9 @@ the user has multiple tabs open.
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import pandas as pd
@@ -23,6 +25,9 @@ log = get_logger(__name__)
 
 _CACHE_TTL_SEC = 30
 _cache: dict[str, tuple[float, MarketSnapshot]] = {}
+# Serialise concurrent first-hits so two threads don't both fan out to all
+# 6 upstream APIs on a cold cache.
+_cache_lock = threading.Lock()
 
 
 # =============================================================================
@@ -76,25 +81,40 @@ def _btc_quote() -> IndexQuote:
 
 def fetch_snapshot(*, force_refresh: bool = False) -> MarketSnapshot:
     """Fetch (or return cached) market snapshot for the TopBar."""
-    now = time.time()
     if not force_refresh:
         cached = _cache.get("snapshot")
-        if cached and (now - cached[0]) < _CACHE_TTL_SEC:
+        if cached and (time.time() - cached[0]) < _CACHE_TTL_SEC:
             return cached[1]
 
-    log.info("market snapshot fetch (force_refresh=%s)", force_refresh)
+    # Single-flight: a second thread that arrives during a cold-cache fetch
+    # blocks here, then re-checks the cache and returns the just-populated value.
+    with _cache_lock:
+        if not force_refresh:
+            cached = _cache.get("snapshot")
+            if cached and (time.time() - cached[0]) < _CACHE_TTL_SEC:
+                return cached[1]
 
-    # Each fetcher returns a sensible fallback on failure so a single bad
-    # source can never crash the TopBar.
-    snapshot = MarketSnapshot(
-        kospi=_fdr_index_quote("KS11", fallback=IndexQuote(0.0, 0.0)),
-        kosdaq=_fdr_index_quote("KQ11", fallback=IndexQuote(0.0, 0.0)),
-        usd_krw=_fdr_index_quote("USD/KRW", fallback=IndexQuote(0.0, 0.0)),
-        btc=_btc_quote(),
-        dxy=_fdr_index_quote("DX-Y.NYB", fallback=IndexQuote(0.0, 0.0)),
-        vix=_fdr_index_quote("VIX", fallback=IndexQuote(0.0, 0.0)),
-        timestamp=pd.Timestamp.now(tz='UTC'),
-    )
+        log.info("market snapshot fetch (force_refresh=%s)", force_refresh)
 
-    _cache["snapshot"] = (now, snapshot)
-    return snapshot
+        # Each fetcher returns a sensible fallback on failure so a single bad
+        # source can never crash the TopBar. Fan out the 6 independent fetches
+        # in parallel — serial calls add up to ~5-8s on cache miss otherwise.
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            f_kospi   = ex.submit(_fdr_index_quote, "KS11",     fallback=IndexQuote(0.0, 0.0))
+            f_kosdaq  = ex.submit(_fdr_index_quote, "KQ11",     fallback=IndexQuote(0.0, 0.0))
+            f_usd_krw = ex.submit(_fdr_index_quote, "USD/KRW",  fallback=IndexQuote(0.0, 0.0))
+            f_dxy     = ex.submit(_fdr_index_quote, "DX-Y.NYB", fallback=IndexQuote(0.0, 0.0))
+            f_vix     = ex.submit(_fdr_index_quote, "VIX",      fallback=IndexQuote(0.0, 0.0))
+            f_btc     = ex.submit(_btc_quote)
+            snapshot = MarketSnapshot(
+                kospi=f_kospi.result(),
+                kosdaq=f_kosdaq.result(),
+                usd_krw=f_usd_krw.result(),
+                btc=f_btc.result(),
+                dxy=f_dxy.result(),
+                vix=f_vix.result(),
+                timestamp=pd.Timestamp.now(tz='UTC'),
+            )
+
+        _cache["snapshot"] = (time.time(), snapshot)
+        return snapshot

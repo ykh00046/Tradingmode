@@ -193,11 +193,13 @@ def _coerce_bool_series(value: Any, index: pd.Index) -> pd.Series:
 
 def _eval_one(expr: str, df: pd.DataFrame) -> pd.Series:
     locals_ = _eval_locals(df)
-    # ``engine='python'`` is required because our DSL allows function calls
-    # (numexpr does not). Safety comes from the AST validator above, not from
-    # the engine choice.
+    # NB: ``compile + eval`` (instead of pd.eval) so the string we evaluate is
+    # exactly the one ``validate_expression`` parsed — no risk of pandas'
+    # internal AST rewrite reaching past the validator. Builtins are stripped
+    # so even an attacker-controlled identifier cannot resolve to ``__import__``.
     try:
-        result = pd.eval(expr, parser="pandas", engine="python", local_dict=locals_)
+        code = compile(expr, "<dsl>", "eval")
+        result = eval(code, {"__builtins__": {}}, locals_)              # noqa: S307
     except Exception as e:                                                   # pragma: no cover
         raise InvalidStrategyError(
             f"evaluation failed: {e}",

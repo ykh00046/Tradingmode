@@ -78,9 +78,28 @@ def _build_user_prompt(
     we additionally include MA / RSI / MACD / ADX / BB at the signal bar so the
     model has full context.
     """
-    if signal.timestamp in df_window.index:
-        bar = df_window.loc[signal.timestamp]
-    else:
+    # NB: ``signal.timestamp in df_window.index`` can silently return False if
+    # the two have different timezones (e.g. one UTC and one tz-naive) even
+    # though they refer to the same instant. Normalise both sides to UTC first;
+    # if the lookup still fails, fall back to the latest bar.
+    try:
+        sig_ts = signal.timestamp
+        if sig_ts.tzinfo is None:
+            sig_ts = sig_ts.tz_localize("UTC")
+        else:
+            sig_ts = sig_ts.tz_convert("UTC")
+        idx = df_window.index
+        if isinstance(idx, pd.DatetimeIndex):
+            idx_utc = idx.tz_convert("UTC") if idx.tz is not None else idx.tz_localize("UTC")
+            if sig_ts in idx_utc:
+                bar = df_window.iloc[idx_utc.get_loc(sig_ts)]
+            else:
+                bar = df_window.iloc[-1]
+        elif signal.timestamp in df_window.index:
+            bar = df_window.loc[signal.timestamp]
+        else:
+            bar = df_window.iloc[-1]
+    except Exception:
         bar = df_window.iloc[-1]
 
     fields = {

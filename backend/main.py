@@ -54,14 +54,17 @@ app = FastAPI(
 )
 
 
+_cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins = [
     o.strip()
-    for o in os.environ.get(
-        "CORS_ORIGINS",
-        "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000",
-    ).split(",")
+    for o in (_cors_env or "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000").split(",")
     if o.strip()
 ]
+if _cors_env is None:
+    log.warning(
+        "CORS_ORIGINS env not set — falling back to localhost dev origins. "
+        "Set CORS_ORIGINS to a comma-separated origin list before deploying to prod."
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -148,13 +149,23 @@ def _resolve_fx_rates(
     portfolio: Portfolio,
     as_of: pd.Timestamp,
 ) -> dict[str, FxQuote]:
-    """Return FX quotes for every (currency → base_currency) pair we will need."""
+    """Return FX quotes for every (currency → base_currency) pair we will need.
+
+    Pairs are fetched in parallel — each call is an independent blocking HTTP
+    round-trip, so serialising them is gratuitous latency.
+    """
     base = portfolio.base_currency
-    pairs_needed: set[str] = set()
-    for h in portfolio.holdings:
-        if h.currency != base:
-            pairs_needed.add(f"{h.currency}/{base}")
-    return {p: _resolve_fx_pair(p, as_of) for p in pairs_needed}
+    pairs_needed: set[str] = {
+        f"{h.currency}/{base}" for h in portfolio.holdings if h.currency != base
+    }
+    if not pairs_needed:
+        return {}
+    out: dict[str, FxQuote] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(pairs_needed))) as ex:
+        future_to_pair = {ex.submit(_resolve_fx_pair, p, as_of): p for p in pairs_needed}
+        for fut in as_completed(future_to_pair):
+            out[future_to_pair[fut]] = fut.result()
+    return out
 
 
 # =============================================================================
@@ -238,23 +249,28 @@ def analyze(
 
     analyses: list[HoldingAnalysis] = []
     skipped: list[SkippedHolding] = []
-    for h in portfolio.holdings:
-        try:
-            analyses.append(_analyze_holding(h, fx_rates, base_currency, lookback_days, as_of))
-        except Exception as e:
-            log.warning(
-                "skipping holding %s/%s: %s",
-                h.market.value,
-                h.symbol,
-                e,
-            )
-            skipped.append(
-                SkippedHolding(
-                    market=h.market,
-                    symbol=h.symbol,
-                    reason=str(e),
-                )
-            )
+    # Fan out per-holding work — each call is a blocking adapter fetch
+    # (Binance/pykrx) + indicator compute. Serialising N holdings would multiply
+    # the page latency by N. Cap at 4 to stay polite to upstream APIs.
+    if portfolio.holdings:
+        with ThreadPoolExecutor(max_workers=min(4, len(portfolio.holdings))) as ex:
+            futures = {
+                ex.submit(_analyze_holding, h, fx_rates, base_currency, lookback_days, as_of): h
+                for h in portfolio.holdings
+            }
+            for fut in as_completed(futures):
+                h = futures[fut]
+                try:
+                    analyses.append(fut.result())
+                except Exception as e:
+                    log.warning(
+                        "skipping holding %s/%s: %s", h.market.value, h.symbol, e,
+                    )
+                    skipped.append(
+                        SkippedHolding(market=h.market, symbol=h.symbol, reason=str(e))
+                    )
+    # as_completed yields out-of-input-order; sort to make the response stable.
+    analyses.sort(key=lambda a: (a.holding.market.value, a.holding.symbol))
 
     total_market_value = sum(a.market_value for a in analyses)
     total_cost_basis = sum(a.cost_basis for a in analyses)

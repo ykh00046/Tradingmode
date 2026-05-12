@@ -457,8 +457,11 @@ function MACDChart({ instrument, view, hoverIdx, upColor, downColor }) {
   const sigA = ind.macd.signal.slice(view[0], view[1]);
   const histA = ind.macd.hist.slice(view[0], view[1]);
   const all = [...arr, ...sigA, ...histA].filter((v) => v != null);
-  const max = Math.max(...all.map(Math.abs));
-  const yAt = (v) => padT + H / 2 - (v / max) * (H / 2 - 2);
+  // Guard against all-null (early bars) or all-zero series, where max would
+  // be -Infinity or 0 and propagate NaN through every coordinate.
+  const max = all.length > 0 ? Math.max(...all.map(Math.abs)) : 1;
+  const safeMax = max > 0 ? max : 1;
+  const yAt = (v) => padT + H / 2 - (v / safeMax) * (H / 2 - 2);
   const xAt = (i) => padL + (i + 0.5) * cw;
   function path(a) {
     let d = '';
@@ -491,17 +494,19 @@ function MACDChart({ instrument, view, hoverIdx, upColor, downColor }) {
 function MiniSpark({ candles, upColor, downColor }) {
   const width = 96, height = 24;
   const last = candles.slice(-40);
+  if (!last.length) return <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height, display: 'block' }} />;
   const lo = Math.min(...last.map((c) => c.l));
   const hi = Math.max(...last.map((c) => c.h));
+  const range = hi - lo || 1;  // halted/flat candles → render flat midline
   const W = width, H = height;
   const cw = W / last.length;
   return (
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width, height, display: 'block' }}>
       {last.map((c, i) => {
-        const yh = H - ((c.h - lo) / (hi - lo)) * H;
-        const yl = H - ((c.l - lo) / (hi - lo)) * H;
-        const yo = H - ((c.o - lo) / (hi - lo)) * H;
-        const yc = H - ((c.c - lo) / (hi - lo)) * H;
+        const yh = H - ((c.h - lo) / range) * H;
+        const yl = H - ((c.l - lo) / range) * H;
+        const yo = H - ((c.o - lo) / range) * H;
+        const yc = H - ((c.c - lo) / range) * H;
         const up = c.c >= c.o;
         const x = i * cw + cw / 2;
         const bw = Math.max(1, cw * 0.6);
@@ -519,13 +524,18 @@ function MiniSpark({ candles, upColor, downColor }) {
 // ─── Equity curve ────────────────────────────────────────────
 function EquityCurve({ equity, trades, upColor, downColor }) {
   const width = 800, height = 240, padL = 36, padR = 12, padT = 12, padB = 22;
+  if (!equity || equity.length === 0) {
+    return <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', display: 'block' }} />;
+  }
   const eqs = equity.map((e) => e.eq);
   const lo = Math.min(...eqs);
   const hi = Math.max(...eqs);
+  const range = hi - lo || 1;             // flat equity → render flat baseline
+  const denom = Math.max(1, equity.length - 1);
   const W = width - padL - padR;
   const H = height - padT - padB;
-  const xAt = (i) => padL + (i / (equity.length - 1)) * W;
-  const yAt = (v) => padT + H - ((v - lo) / (hi - lo)) * H;
+  const xAt = (i) => padL + (i / denom) * W;
+  const yAt = (v) => padT + H - ((v - lo) / range) * H;
   let d = '';
   let dArea = '';
   for (let i = 0; i < equity.length; i++) {
@@ -554,12 +564,18 @@ function EquityCurve({ equity, trades, upColor, downColor }) {
       <line x1={padL} x2={width - padR} y1={yAt(1)} y2={yAt(1)} stroke="rgba(255,255,255,0.18)" strokeDasharray="2 3" />
       <path d={dArea} fill="url(#eqfill)" />
       <path d={d} fill="none" stroke="oklch(0.78 0.16 75)" strokeWidth="1.4" />
-      {trades.map((t, k) => (
-        <g key={k}>
-          <circle cx={xAt(t.entryI)} cy={yAt(equity[t.entryI].eq)} r="2.5" fill={upColor} />
-          <circle cx={xAt(t.exitI)} cy={yAt(equity[t.exitI].eq)} r="2.5" fill={t.ret >= 0 ? upColor : downColor} />
-        </g>
-      ))}
+      {trades.map((t, k) => {
+        // Defensive: skip trade markers if entry/exit indices are missing or out of bounds
+        const eIn = equity[t.entryI];
+        const eOut = equity[t.exitI];
+        if (!eIn || !eOut) return null;
+        return (
+          <g key={k}>
+            <circle cx={xAt(t.entryI)} cy={yAt(eIn.eq)} r="2.5" fill={upColor} />
+            <circle cx={xAt(t.exitI)} cy={yAt(eOut.eq)} r="2.5" fill={t.ret >= 0 ? upColor : downColor} />
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -567,15 +583,20 @@ function EquityCurve({ equity, trades, upColor, downColor }) {
 // ─── Drawdown ────────────────────────────────────────────────
 function DrawdownChart({ equity }) {
   const width = 800, height = 90, padL = 36, padR = 12, padT = 8, padB = 16;
+  if (!equity || equity.length === 0) {
+    return <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', display: 'block' }} />;
+  }
   let peak = -Infinity;
   const dd = equity.map((e) => {
     peak = Math.max(peak, e.eq);
     return (e.eq - peak) / peak;
   });
   const lo = Math.min(...dd);
+  const denom = -lo || 1;                  // no drawdown ever → flat 0% line
+  const lenDenom = Math.max(1, dd.length - 1);
   const W = width - padL - padR, H = height - padT - padB;
-  const xAt = (i) => padL + (i / (dd.length - 1)) * W;
-  const yAt = (v) => padT + (-v / -lo) * H;
+  const xAt = (i) => padL + (i / lenDenom) * W;
+  const yAt = (v) => padT + (-v / denom) * H;
   let d = '';
   for (let i = 0; i < dd.length; i++) {
     const x = xAt(i), y = yAt(dd[i]);

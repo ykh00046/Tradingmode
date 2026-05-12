@@ -259,7 +259,11 @@
   // ── Universe ────────────────────────────────────────────────
   const N = 240;
   const day = 24 * 3600 * 1000;
-  const today = new Date('2026-04-29T09:00:00+09:00').getTime();
+  // Anchor synthetic candles to "today 09:00 local" so the fallback never
+  // appears days-stale in the TopBar. Previously hardcoded to 2026-04-29
+  // which made the demo look outdated as soon as the date rolled over.
+  const _now = new Date();
+  const today = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate(), 9, 0, 0, 0).getTime();
 
   const UNIVERSE = [
     {

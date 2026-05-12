@@ -29,6 +29,8 @@ _INTERVAL_MAP = {
     "1h": "1h",
     "4h": "4h",
     "1d": "1d",
+    "1w": "1w",     # weekly (Binance native)
+    "1M": "1M",     # monthly (Binance native)
 }
 
 
@@ -111,7 +113,11 @@ def download(
         # python-binance raises BinanceAPIException; check by message rather
         # than importing the class to keep this module decoupled.
         cls_name = type(e).__name__
-        if "Invalid symbol" in message or "INVALID" in message.upper() and "SYMBOL" in message.upper():
+        # NB: parenthesise to avoid `A or B and C` precedence trap. Also restrict
+        # the upper-case path to whole-word matches so generic messages that merely
+        # contain the substring "INVALID" (e.g. inside a help URL) don't trigger.
+        upper = message.upper()
+        if "Invalid symbol" in message or ("INVALID SYMBOL" in upper):
             raise InvalidSymbolError(f"unknown Binance symbol: {symbol}") from e
         if "429" in message or "Too many requests" in message or "rate limit" in message.lower():
             raise DataSourceError(

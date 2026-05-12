@@ -128,20 +128,36 @@
 
   // /api/backtest result → frontend {trades, equity, stats}
   function backendBacktestToFrontend(bt) {
-    var trades = (bt.trades || []).map(function (t) {
-      // backtesting.py uses CamelCase columns; if our converters renamed them
-      // we still try both shapes.
-      return {
-        entryT: t.EntryTime  || t.entry_t || null,
-        exitT:  t.ExitTime   || t.exit_t  || null,
-        entryP: t.EntryPrice || t.entry_price || 0,
-        exitP:  t.ExitPrice  || t.exit_price  || 0,
-        ret:    typeof t.ReturnPct === 'number' ? t.ReturnPct / 100 : (t.ret || 0),
-      };
-    });
     var equity = (bt.equity_curve || []).map(function (p) {
       // Frontend chart expects {t, eq} where eq is normalised to start at 1.
       return { t: p.t, eq: p.equity };
+    });
+    // Build a t→index map so we can recover bar indices from EntryTime/ExitTime
+    // when EntryBar/ExitBar are not provided by backtesting.py.
+    var tToI = new Map();
+    equity.forEach(function (p, i) { if (p.t != null) tToI.set(p.t, i); });
+
+    var trades = (bt.trades || []).map(function (t) {
+      var entryT = t.EntryTime  || t.entry_t || null;
+      var exitT  = t.ExitTime   || t.exit_t  || null;
+      var entryI = (typeof t.EntryBar === 'number') ? t.EntryBar
+                 : (entryT != null && tToI.has(entryT)) ? tToI.get(entryT)
+                 : null;
+      var exitI  = (typeof t.ExitBar === 'number')  ? t.ExitBar
+                 : (exitT != null && tToI.has(exitT))   ? tToI.get(exitT)
+                 : null;
+      var hold = (entryI != null && exitI != null) ? Math.max(0, exitI - entryI) : 0;
+      return {
+        entryT: entryT,
+        exitT:  exitT,
+        entryP: t.EntryPrice || t.entry_price || 0,
+        exitP:  t.ExitPrice  || t.exit_price  || 0,
+        ret:    typeof t.ReturnPct === 'number' ? t.ReturnPct / 100 : (t.ret || 0),
+        entryI: entryI,
+        exitI:  exitI,
+        hold:   hold,
+        open:   false,        // backtesting.py synthetically closes open trades at last bar
+      };
     });
     // Re-normalise so first eq = 1 (frontend renderer expects this).
     if (equity.length > 0 && equity[0].eq && equity[0].eq !== 1) {
@@ -183,14 +199,31 @@
   // ─────────────────────────────────────────────────────────────────────────
   // Public: loadInstrument
   // ─────────────────────────────────────────────────────────────────────────
+  // Per-interval default lookback so we don't ask for 365 days of 1-minute bars
+  // (that would be 525,600 candles per symbol).
+  var LOOKBACK_BY_INTERVAL = {
+    '1m':  3,
+    '5m':  14,
+    '15m': 30,
+    '1h':  60,
+    '4h':  180,
+    '1d':  365,
+    // 1w lookback bumped: 730d ≈ 104 weeks was just barely enough for MA60
+    // weekly, leaving MA120 weekly perpetually `null`. 1100d ≈ 157 weeks
+    // gives MA120 weekly room to populate with margin for partial weeks.
+    '1w':  1100,
+    '1M':  3650,   // ~120 months (~10 years) v0.8 monthly
+  };
+
   async function loadInstrument(meta, opts) {
     opts = opts || {};
-    var lookbackDays = opts.lookbackDays || 365;
+    var interval = opts.interval || '1d';
+    var lookbackDays = opts.lookbackDays || LOOKBACK_BY_INTERVAL[interval] || 365;
     var range = window.api.dateRange(lookbackDays);
     var params = {
       market:   marketToBackend(meta.market),
       symbol:   symbolToBackend(meta.symbol),
-      interval: '1d',
+      interval: interval,
       start:    range.start,
       end:      range.end,
     };
@@ -280,12 +313,18 @@
       await Promise.all(batch.map(async function (meta) {
         try {
           var inst = await loadInstrument(meta, { signal: opts.signal });
+          inst.synthetic = false;
           data[meta.symbol] = inst;
         } catch (e) {
           console.warn('[loader] failed for', meta.symbol, e && (e.code || e.message));
-          // Fall back to whatever data.js already populated.
+          // Fall back to whatever data.js already populated. Mark it so the UI
+          // can warn the user that this row is not live data.
           var fallback = window.MarketData && window.MarketData.DATA && window.MarketData.DATA[meta.symbol];
-          if (fallback) data[meta.symbol] = fallback;
+          if (fallback) {
+            fallback.synthetic = true;
+            fallback.syntheticReason = (e && (e.code || e.message)) || 'fetch failed';
+            data[meta.symbol] = fallback;
+          }
         }
         done += 1;
         onProgress({ done: done, total: universe.length, current: meta.symbol });

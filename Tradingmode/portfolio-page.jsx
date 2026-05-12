@@ -97,7 +97,9 @@ function PortfolioPage({ universe, data, setCurrent, upColor, downColor }) {
           symbol: symbolKey,
           qty: h.quantity,
           avgCost: h.avg_price,
-          meta: inst ? inst.meta : { symbol: symbolKey, name: h.symbol, market: h.market, currency: h.currency, exch: h.market === 'crypto' ? 'BINANCE' : 'KRX' },
+          // Normalise backend 'kr_stock' → frontend 'kr' so downstream filters
+          // (rows.filter(r =&gt; r.meta.market === 'kr')) work uniformly.
+          meta: inst ? inst.meta : { symbol: symbolKey, name: h.symbol, market: h.market === 'kr_stock' ? 'kr' : h.market, currency: h.currency, exch: h.market === 'crypto' ? 'BINANCE' : 'KRX' },
           last: h.current_price_local,
           prev: last && prev ? prev.c : h.current_price_local,
           dayChg,

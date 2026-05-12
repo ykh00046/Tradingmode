@@ -17,8 +17,44 @@ function useTweaks(defaults) {
   return [tweaks, setTweak];
 }
 
-// ─── Top bar ──────────────────────────────────────────────────
+// ─── Helpers (Design v0.3 §4.2, §4.3) ─────────────────────────
+function formatPriceCompact(v) {
+  if (v == null || isNaN(v)) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (abs >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+  return v.toFixed(2);
+}
+
+function useViewportWidth() {
+  const [w, setW] = useState(window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setW(window.innerWidth);
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return w;
+}
+
+// ─── Top bar (responsive 1280/1024 — Design v0.3 §5.3) ───────
 function TopBar({ now, fxKRW, btcSpot, marketState }) {
+  const vw = useViewportWidth();
+  const compact = vw < 1280;
+  const minimal = vw < 1024;
+
+  // All 6 tapes as raw numeric values so we can compact-format consistently.
+  const allTapes = [
+    { id: 'kospi',   label: 'KOSPI',   raw: 2748.31, change: +0.42, full: '2,748.31',          essential: true  },
+    { id: 'kosdaq',  label: 'KOSDAQ',  raw: 887.04,  change: -0.31, full: '887.04',            essential: false },
+    { id: 'usdkrw',  label: 'USD/KRW', raw: fxKRW,   change: +0.18, full: fmt.price(fxKRW, 'KRW'), essential: true },
+    { id: 'btc',     label: 'BTC',     raw: btcSpot, change: +1.94, full: '$' + fmt.price(btcSpot), essential: true, prefix: '$' },
+    { id: 'dxy',     label: 'DXY',     raw: 104.62,  change: -0.07, full: '104.62',            essential: false },
+    { id: 'vix',     label: 'VIX',     raw: 14.83,   change: +2.10, full: '14.83',             essential: false },
+  ];
+
+  const tapes = minimal ? allTapes.filter((t) => t.essential) : allTapes;
+
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -29,12 +65,15 @@ function TopBar({ now, fxKRW, btcSpot, marketState }) {
         <div className="version">v0.1.0 · DEV</div>
       </div>
       <div className="topbar-mid">
-        <Tape label="KOSPI" value="2,748.31" change={+0.42} />
-        <Tape label="KOSDAQ" value="887.04" change={-0.31} />
-        <Tape label="USD/KRW" value={fmt.price(fxKRW, 'KRW')} change={+0.18} />
-        <Tape label="BTC" value={'$' + fmt.price(btcSpot)} change={+1.94} />
-        <Tape label="DXY" value="104.62" change={-0.07} />
-        <Tape label="VIX" value="14.83" change={+2.10} />
+        {tapes.map((t) => (
+          <Tape
+            key={t.id}
+            label={t.label}
+            value={compact ? (t.prefix || '') + formatPriceCompact(t.raw) : t.full}
+            change={t.change}
+            title={t.full}
+          />
+        ))}
       </div>
       <div className="topbar-right">
         <div className="market-state">
@@ -50,10 +89,10 @@ function TopBar({ now, fxKRW, btcSpot, marketState }) {
   );
 }
 
-function Tape({ label, value, change }) {
+function Tape({ label, value, change, title }) {
   const up = change >= 0;
   return (
-    <div className="tape">
+    <div className="tape" title={title}>
       <span className="tape-label">{label}</span>
       <span className="tape-value">{value}</span>
       <span className={'tape-change ' + (up ? 'up' : 'down')}>
@@ -63,10 +102,93 @@ function Tape({ label, value, change }) {
   );
 }
 
-// ─── Watchlist ────────────────────────────────────────────────
+// ─── Watchlist (favorites + sort, Design v0.3 §5.4 / §4.4) ───
 function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) {
   const [filter, setFilter] = useState('all');
+  const [favs, setFavs] = useState(() =>
+    (window.tmStorage && window.tmStorage.get('wl-favs', [])) || []
+  );
+
+  // Stale favorites cleanup — drop symbols not in current universe.
+  useEffect(() => {
+    if (!window.tmStorage) return;
+    const validSyms = new Set(universe.map((u) => u.symbol));
+    const cleaned = favs.filter((s) => validSyms.has(s));
+    if (cleaned.length !== favs.length) {
+      setFavs(cleaned);
+      window.tmStorage.set('wl-favs', cleaned);
+    }
+  }, [universe]);
+
+  function toggleFav(sym, e) {
+    e.stopPropagation();
+    const next = favs.includes(sym) ? favs.filter((s) => s !== sym) : [...favs, sym];
+    setFavs(next);
+    if (window.tmStorage) window.tmStorage.set('wl-favs', next);
+  }
+
   const filtered = universe.filter((u) => filter === 'all' || u.market === filter);
+  // Sort: favorites first (in fav-array order), then non-favs (universe order).
+  const favSet = new Set(favs);
+  const favRows = favs.map((s) => filtered.find((u) => u.symbol === s)).filter(Boolean);
+  const nonFavRows = filtered.filter((u) => !favSet.has(u.symbol));
+  const showDivider = favRows.length > 0 && nonFavRows.length > 0;
+
+  function renderRow(u) {
+    const d = data[u.symbol];
+    const last = d.candles[d.candles.length - 1];
+    const prev = d.candles[d.candles.length - 2];
+    const ch = (last.c - prev.c) / prev.c;
+    const up = ch >= 0;
+    const isFav = favSet.has(u.symbol);
+    // NB: row is a div (not button) so the favorite star — itself an interactive
+    // element — is not nested inside a button (invalid HTML). Keyboard a11y is
+    // preserved via tabIndex + Enter/Space handler.
+    return (
+      <div
+        key={u.symbol}
+        className={'wl-row' + (u.symbol === current ? ' active' : '') + (isFav ? ' is-fav' : '')}
+        onClick={() => setCurrent(u.symbol)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrent(u.symbol); } }}
+        role="button"
+        tabIndex={0}
+        aria-pressed={u.symbol === current}
+      >
+        <span
+          className={'wl-fav' + (isFav ? ' on' : '')}
+          onClick={(e) => toggleFav(u.symbol, e)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); toggleFav(u.symbol, e); } }}
+          role="button"
+          tabIndex={0}
+          title={isFav ? '즐겨찾기 해제' : '즐겨찾기'}
+          aria-label={isFav ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+          aria-pressed={isFav}
+        >
+          {isFav ? '★' : '☆'}
+        </span>
+        <div className="wl-sym">
+          <span className={'market-tag ' + u.market}>{u.exch}</span>
+          <span className="wl-code mono">{u.symbol}</span>
+          <span className="wl-name">{u.name}</span>
+          {d.synthetic && (
+            <span
+              className="wl-synth-tag mono"
+              title={`라이브 데이터 로드 실패 — 합성 데이터 표시 중 (${d.syntheticReason || 'unknown'})`}
+              aria-label="합성 데이터"
+            >
+              SYNTH
+            </span>
+          )}
+        </div>
+        <div className="wl-price mono">{fmt.price(last.c, u.currency)}</div>
+        <div className={'wl-chg mono ' + (up ? 'up' : 'down')}>
+          {up ? '+' : ''}{(ch * 100).toFixed(2)}%
+        </div>
+        <div className="wl-spark"><MiniSpark candles={d.candles} upColor={upColor} downColor={downColor} /></div>
+      </div>
+    );
+  }
+
   return (
     <div className="watchlist">
       <div className="panel-header">
@@ -85,31 +207,9 @@ function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) 
         <span>30D</span>
       </div>
       <div className="watchlist-rows">
-        {filtered.map((u) => {
-          const d = data[u.symbol];
-          const last = d.candles[d.candles.length - 1];
-          const prev = d.candles[d.candles.length - 2];
-          const ch = (last.c - prev.c) / prev.c;
-          const up = ch >= 0;
-          return (
-            <button
-              key={u.symbol}
-              className={'wl-row' + (u.symbol === current ? ' active' : '')}
-              onClick={() => setCurrent(u.symbol)}
-            >
-              <div className="wl-sym">
-                <span className={'market-tag ' + u.market}>{u.exch}</span>
-                <span className="wl-code mono">{u.symbol}</span>
-                <span className="wl-name">{u.name}</span>
-              </div>
-              <div className="wl-price mono">{fmt.price(last.c, u.currency)}</div>
-              <div className={'wl-chg mono ' + (up ? 'up' : 'down')}>
-                {up ? '+' : ''}{(ch * 100).toFixed(2)}%
-              </div>
-              <div className="wl-spark"><MiniSpark candles={d.candles} upColor={upColor} downColor={downColor} /></div>
-            </button>
-          );
-        })}
+        {favRows.map(renderRow)}
+        {showDivider && <div className="wl-favs-divider" aria-hidden="true" />}
+        {nonFavRows.map(renderRow)}
       </div>
     </div>
   );
@@ -149,24 +249,128 @@ function DataStatusBar({ instrument, interval, dataState, setDataState }) {
   );
 }
 
+// ─── Interval error message localization (v0.8 cleanup L-2) ────
+// Maps backend English error patterns to Korean user-facing messages.
+// Backend convention is English in `e.message` + machine-readable `e.details`;
+// this layer turns that into something a Korean user can act on.
+function localizeIntervalError(e, iv, symbol) {
+  const ivLabel = (INTERVAL_LABELS[iv] && INTERVAL_LABELS[iv].label) || iv;
+  if (!e || !e.message) return `${ivLabel} 데이터 로드 실패`;
+  const msg = String(e.message);
+  if (/insufficient daily data/i.test(msg)) {
+    const details = (e && e.details) || {};
+    const have = details.daily_rows;
+    const need = details.min_required;
+    if (have != null && need != null) {
+      return `${symbol} ${ivLabel}봉 데이터 부족 — 일봉 ${have}일 (최소 ${need}일 필요)`;
+    }
+    return `${symbol} ${ivLabel}봉 데이터 부족`;
+  }
+  if (/unsupported.*interval/i.test(msg)) {
+    return `${symbol} 종목은 ${ivLabel}봉 미지원`;
+  }
+  if (/no data for/i.test(msg) || /unknown.*symbol/i.test(msg)) {
+    return `${symbol} 데이터 없음`;
+  }
+  if (/timeout/i.test(msg)) {
+    return `${ivLabel}봉 데이터 시간 초과 — 잠시 후 재시도`;
+  }
+  if (/rate limit/i.test(msg) || /429/.test(msg)) {
+    return `요청 한도 초과 — 60초 후 재시도`;
+  }
+  // Fall back to the raw message so we don't lose information.
+  return `${ivLabel}봉 데이터 로드 실패: ${msg}`;
+}
+
+// ─── Interval label/group mapping (Design v0.3 §3.2 + v0.8 §3.4) ─
+// NB: '1m' (minute) and '1M' (month) are case-sensitive — DO NOT confuse them.
+const INTERVAL_LABELS = {
+  '1m':  { label: '1분',   group: 'minute' },   // minute
+  '5m':  { label: '5분',   group: 'minute' },
+  '15m': { label: '15분',  group: 'minute' },
+  '1h':  { label: '1시간', group: 'hour'   },
+  '4h':  { label: '4시간', group: 'hour'   },
+  '1d':  { label: '일',    group: 'day'    },
+  '1w':  { label: '주',    group: 'longer' },   // ✨ v0.8 weekly
+  '1M':  { label: '월',    group: 'longer' },   // ✨ v0.8 monthly (note uppercase M)
+};
+const INTERVAL_GROUP_ORDER = ['minute', 'hour', 'day', 'longer'];
+
+// Runtime sanity check (v0.8 cleanup L-4) — JS Object keys are case-sensitive
+// per spec, but a regression where '1m'/'1M' get unified or duplicated would be
+// a silent disaster. Trip a console.error if anyone ever breaks this.
+(function _assertIntervalKeysDistinct() {
+  const keys = Object.keys(INTERVAL_LABELS);
+  if (keys.length !== 8) {
+    console.error('[INTERVAL_LABELS] expected 8 keys, got', keys.length, keys);
+  }
+  if (INTERVAL_LABELS['1m'] === INTERVAL_LABELS['1M']) {
+    console.error('[INTERVAL_LABELS] 1m and 1M collapsed to same entry — case sensitivity broken!');
+  }
+  if (INTERVAL_LABELS['1m'].group !== 'minute' || INTERVAL_LABELS['1M'].group !== 'longer') {
+    console.error('[INTERVAL_LABELS] 1m/1M group misassigned', INTERVAL_LABELS['1m'], INTERVAL_LABELS['1M']);
+  }
+})();
+
 // ─── Chart Analysis page ──────────────────────────────────────
-function ChartPage({ instrument, upColor, downColor, indicators, setIndicators, signalsOn, setSignalsOn, trendBand, setTrendBand, dataState, setDataState }) {
-  const [view, setView] = useState([instrument.candles.length - 120, instrument.candles.length]);
+function ChartPage({ instrument: instrumentProp, upColor, downColor, indicators, setIndicators, signalsOn, setSignalsOn, trendBand, setTrendBand, dataState, setDataState }) {
+  // Per-interval override — when user picks 1h/4h/etc we refetch and store
+  // the result here without mutating the parent's daily DATA cache wholesale.
+  const [localInstrument, setLocalInstrument] = useState(null);
+  const instrument = localInstrument || instrumentProp;
+
+  // NB: clamp lower bound to 0 — a negative `from` makes slice() return the
+  // whole array which then breaks the min/max axis tick computation downstream.
+  const initialFrom = Math.max(0, instrument.candles.length - 120);
+  const [view, setView] = useState([initialFrom, instrument.candles.length]);
   const [hoverIdx, setHoverIdx] = useState(null);
   const [interval, setIntervalTf] = useState('1d');
   const [zoomLevel, setZoomLevel] = useState('3M');
   const [drawing, setDrawing] = useState(null); // 'trend' | 'fib' | null
   const [drawings, setDrawings] = useState([]);
+  const intervalReqRef = useRef(0); // race-condition guard for fast clicks
 
-  // Reset view when instrument changes
-  useEffect(() => { setView([instrument.candles.length - 120, instrument.candles.length]); setDrawings([]); setDrawing(null); }, [instrument.meta.symbol]);
+  // Reset everything when the parent's symbol changes (Watchlist click).
+  useEffect(() => {
+    setLocalInstrument(null);
+    setIntervalTf('1d');
+    const n = instrumentProp.candles.length;
+    setView([Math.max(0, n - 120), n]);
+    setDrawings([]);
+    setDrawing(null);
+  }, [instrumentProp.meta.symbol]);
 
-  // Mock loading when interval changes
-  function changeInterval(iv) {
+  // Real interval refetch — hits backend with the chosen timeframe.
+  async function changeInterval(iv) {
     if (iv === interval) return;
     setIntervalTf(iv);
-    setDataState({ status: 'loading', message: `${instrument.meta.symbol} ${iv} 데이터 수집 중…`, source: instrument.meta.market === 'crypto' ? 'Binance Spot' : 'pykrx' });
-    setTimeout(() => setDataState({ status: 'ok', message: '캐시 적중', source: instrument.meta.market === 'crypto' ? 'Binance Spot' : 'pykrx' }), 700);
+
+    const source = instrumentProp.meta.market === 'crypto' ? 'Binance Spot' : 'pykrx';
+
+    // Demo / no-loader: fall back to the previous mock behavior so the UI
+    // doesn't appear broken in synthetic mode.
+    if (window.DEMO_MODE || !window.loader) {
+      setDataState({ status: 'loading', message: `${instrumentProp.meta.symbol} ${iv} 데이터 수집 중… (데모)`, source: 'Synthetic' });
+      setTimeout(() => setDataState({ status: 'ok', message: '데모 — 인터벌 전환은 시뮬레이션', source: 'Synthetic' }), 500);
+      return;
+    }
+
+    setDataState({ status: 'loading', message: `${instrumentProp.meta.symbol} ${iv} 데이터 수집 중…`, source });
+
+    const reqId = ++intervalReqRef.current;
+    try {
+      const fresh = await window.loader.loadInstrument(instrumentProp.meta, { interval: iv });
+      // Stale request — user clicked again before this finished. Drop it.
+      if (reqId !== intervalReqRef.current) return;
+      setLocalInstrument(fresh);
+      setView([Math.max(0, fresh.candles.length - 120), fresh.candles.length]);
+      setHoverIdx(null);
+      setDataState({ status: 'ok', message: '캐시 적중', source });
+    } catch (e) {
+      if (reqId !== intervalReqRef.current) return;
+      console.error('[ChartPage] interval fetch failed', iv, e);
+      setDataState({ status: 'error', message: localizeIntervalError(e, iv, instrumentProp.meta.symbol), source });
+    }
   }
 
   const last = instrument.candles[instrument.candles.length - 1];
@@ -227,22 +431,25 @@ function ChartPage({ instrument, upColor, downColor, indicators, setIndicators, 
           </div>
         </div>
         <div className="ih-right">
-          <div className="tf-group" title="타임프레임 (인터벌)">
-            {['1m', '5m', '15m', '1h', '4h', '1d'].map((iv) => (
-              <button key={iv} className={'tf-btn' + (interval === iv ? ' active' : '')} onClick={() => changeInterval(iv)}>{iv}</button>
-            ))}
-          </div>
-          <div className="tf-group" title="기간 (줌)">
-            {['1M', '3M', '6M', '1Y', 'ALL'].map((t) => (
-              <button key={t} className={'tf-btn zoom' + (zoomLevel === t ? ' active' : '')} onClick={() => {
-                setZoomLevel(t);
-                const N = instrument.candles.length;
-                const map = { '1M': 30, '3M': 90, '6M': 130, '1Y': 200, 'ALL': N };
-                const r = map[t];
-                setView([Math.max(0, N - r), N]);
-              }}>{t}</button>
-            ))}
-          </div>
+          {INTERVAL_GROUP_ORDER.map((g, gi) => {
+            const ivs = Object.keys(INTERVAL_LABELS).filter((iv) => INTERVAL_LABELS[iv].group === g);
+            return (
+              <React.Fragment key={g}>
+                {gi > 0 && <div className="tf-divider" />}
+                <div className={'tf-group tf-group--' + g} title={'타임프레임 (' + g + ')'}>
+                  {ivs.map((iv) => (
+                    <button
+                      key={iv}
+                      className={'tf-btn' + (interval === iv ? ' active' : '')}
+                      onClick={() => changeInterval(iv)}
+                    >
+                      {INTERVAL_LABELS[iv].label}
+                    </button>
+                  ))}
+                </div>
+              </React.Fragment>
+            );
+          })}
           <div className="tool-group">
             <button className={'tool-btn' + (drawing === 'trend' ? ' active' : '')} onClick={() => setDrawing(drawing === 'trend' ? null : 'trend')} title="추세선">
               <svg viewBox="0 0 16 16" width="14" height="14"><path d="M2 13L13 3" stroke="currentColor" strokeWidth="1.4" /><circle cx="2" cy="13" r="1.5" fill="currentColor" /><circle cx="13" cy="3" r="1.5" fill="currentColor" /></svg>
@@ -281,6 +488,17 @@ function ChartPage({ instrument, upColor, downColor, indicators, setIndicators, 
             setDrawings={setDrawings}
             setDrawing={setDrawing}
           />
+          <div className="tf-group zoom-fab" title="기간 (줌)">
+            {['1M', '3M', '6M', '1Y', 'ALL'].map((t) => (
+              <button key={t} className={'tf-btn zoom' + (zoomLevel === t ? ' active' : '')} onClick={() => {
+                setZoomLevel(t);
+                const N = instrument.candles.length;
+                const map = { '1M': 30, '3M': 90, '6M': 130, '1Y': 200, 'ALL': N };
+                const r = map[t];
+                setView([Math.max(0, N - r), N]);
+              }}>{t}</button>
+            ))}
+          </div>
           {drawing && (
             <div className="drawing-banner">
               <span className="dot live" /> {drawing === 'trend' ? '추세선' : '피보나치'} 도구 — 차트에서 두 점을 클릭하세요 <button onClick={() => setDrawing(null)}>취소</button>
@@ -321,6 +539,68 @@ function ChartPage({ instrument, upColor, downColor, indicators, setIndicators, 
   );
 }
 
+// ─── Indicator groups (Design v0.3 §3.4) ──────────────────────
+// Real toggles, not raw indicator columns. dependsOn renders only when parent is on.
+const INDICATOR_GROUPS = [
+  {
+    id: 'trend', label: '추세',
+    items: [
+      { key: 'ma20',  type: 'indicator', label: 'MA 20',  color: 'oklch(0.78 0.16 75)'  },
+      { key: 'ma60',  type: 'indicator', label: 'MA 60',  color: 'oklch(0.70 0.13 230)' },
+      { key: 'ma120', type: 'indicator', label: 'MA 120', color: 'oklch(0.62 0.18 320)' },
+    ],
+  },
+  {
+    id: 'volatility', label: '변동성',
+    items: [
+      { key: 'bb', type: 'indicator', label: '볼린저밴드 (20,2)', color: 'rgba(150,180,220,0.7)' },
+    ],
+  },
+  {
+    id: 'leading', label: '선행 (RPB)',
+    items: [
+      { key: 'rpb',     type: 'indicator', label: 'RSI Price Band', color: 'oklch(0.62 0.22 25)', testid: 'indicator-toggle-rpb' },
+      { key: 'rpbBoth', type: 'indicator', label: '└ 양방향 표시', color: 'rgba(180,180,180,0.5)', dependsOn: 'rpb' },
+    ],
+  },
+  {
+    id: 'display', label: '표시',
+    items: [
+      { key: 'signalsOn', type: 'flat', label: '신호 마커',      color: 'oklch(0.78 0.16 75)' },
+      { key: 'trendBand', type: 'flat', label: '추세 영역 음영', color: 'oklch(0.72 0.18 145)' },
+    ],
+  },
+];
+
+// ─── Collapsible panel section helper (Design v0.3 §5.2) ─────
+// Persists collapsed state per sectionId in tmStorage 'ws-right-collapsed'.
+function CollapsibleSection({ sectionId, title, count, grow, children }) {
+  const stored = (window.tmStorage && window.tmStorage.get('ws-right-collapsed', {})) || {};
+  const [collapsed, setCollapsed] = useState(!!stored[sectionId]);
+
+  function toggle() {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (!window.tmStorage) return;
+    const all = window.tmStorage.get('ws-right-collapsed', {}) || {};
+    window.tmStorage.set('ws-right-collapsed', { ...all, [sectionId]: next });
+  }
+
+  const cls = 'panel-section' + (grow ? ' grow' : '') + (collapsed ? ' collapsed' : '');
+  return (
+    <div className={cls} data-section-id={sectionId}>
+      <div className="panel-header" onClick={toggle} role="button" aria-expanded={!collapsed} tabIndex={0}
+           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}>
+        <span className="panel-title">{title}</span>
+        {count != null && <span className="panel-count mono">{count}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const SIGNALS_LIMIT_OPTIONS = [10, 20, 50, 100];
+
 // ─── Right side panel: indicator toggles + signal feed ──────
 function RightPanel({ instrument, indicators, setIndicators, signalsOn, setSignalsOn, trendBand, setTrendBand, upColor, downColor }) {
   const last = instrument.candles[instrument.candles.length - 1];
@@ -328,44 +608,73 @@ function RightPanel({ instrument, indicators, setIndicators, signalsOn, setSigna
   const lastMacd = instrument.ind.macd.line[instrument.ind.macd.line.length - 1];
   const lastSig = instrument.ind.macd.signal[instrument.ind.macd.signal.length - 1];
   const lastTrend = instrument.trend[instrument.trend.length - 1];
-  const recentSignals = instrument.signals.slice(-12).reverse();
+
+  // Signals limit (Design v0.3 §5.5) — clamped to allowed options.
+  const [signalsLimit, setSignalsLimit] = useState(() => {
+    const v = (window.tmStorage && window.tmStorage.get('signals-limit', 20)) || 20;
+    return SIGNALS_LIMIT_OPTIONS.includes(v) ? v : 20;
+  });
+  function changeSignalsLimit(v) {
+    setSignalsLimit(v);
+    if (window.tmStorage) window.tmStorage.set('signals-limit', v);
+  }
+  const recentSignals = instrument.signals.slice(-signalsLimit).reverse();
+
+  function getValue(item) {
+    if (item.type === 'flat') return item.key === 'signalsOn' ? signalsOn : trendBand;
+    return indicators[item.key];
+  }
+  function getSetter(item) {
+    if (item.type === 'flat') return item.key === 'signalsOn' ? setSignalsOn : setTrendBand;
+    return (v) => setIndicators({ ...indicators, [item.key]: v });
+  }
 
   return (
     <div className="right-panel">
-      <div className="panel-section">
-        <div className="panel-header">
-          <span className="panel-title">현재 상태</span>
-        </div>
+      <CollapsibleSection sectionId="current-status" title="현재 상태">
         <div className="status-grid">
           <StatusCell label="추세" value={lastTrend === 'up' ? '상승' : lastTrend === 'down' ? '하락' : '횡보'} tone={lastTrend} />
           <StatusCell label="RSI 14" value={lastRsi?.toFixed(1)} tone={lastRsi > 70 ? 'down' : lastRsi < 30 ? 'up' : 'side'} sub={lastRsi > 70 ? '과매수' : lastRsi < 30 ? '과매도' : '중립'} />
           <StatusCell label="MACD" value={lastMacd?.toFixed(2)} tone={lastMacd > lastSig ? 'up' : 'down'} sub={lastMacd > lastSig ? '시그널 위' : '시그널 아래'} />
           <StatusCell label="MA20→60" value={instrument.ind.ma20[instrument.ind.ma20.length - 1] > instrument.ind.ma60[instrument.ind.ma60.length - 1] ? '정배열' : '역배열'} tone={instrument.ind.ma20[instrument.ind.ma20.length - 1] > instrument.ind.ma60[instrument.ind.ma60.length - 1] ? 'up' : 'down'} />
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="panel-section">
-        <div className="panel-header">
-          <span className="panel-title">지표 오버레이</span>
-        </div>
+      <CollapsibleSection sectionId="indicators-overlay" title="지표 오버레이">
         <div className="ind-list">
-          <IndToggle label="MA 20" color="oklch(0.78 0.16 75)" on={indicators.ma20} onChange={(v) => setIndicators({ ...indicators, ma20: v })} />
-          <IndToggle label="MA 60" color="oklch(0.70 0.13 230)" on={indicators.ma60} onChange={(v) => setIndicators({ ...indicators, ma60: v })} />
-          <IndToggle label="MA 120" color="oklch(0.62 0.18 320)" on={indicators.ma120} onChange={(v) => setIndicators({ ...indicators, ma120: v })} />
-          <IndToggle label="볼린저밴드 (20,2)" color="rgba(150,180,220,0.7)" on={indicators.bb} onChange={(v) => setIndicators({ ...indicators, bb: v })} />
-          <IndToggle label="RSI Price Band" color="oklch(0.62 0.22 25)" on={indicators.rpb} onChange={(v) => setIndicators({ ...indicators, rpb: v })} data-testid="indicator-toggle-rpb" />
-          {indicators.rpb && (
-            <IndToggle label="└ 양방향 표시" color="rgba(180,180,180,0.5)" on={indicators.rpbBoth} onChange={(v) => setIndicators({ ...indicators, rpbBoth: v })} />
-          )}
-          <IndToggle label="신호 마커" color="oklch(0.78 0.16 75)" on={signalsOn} onChange={setSignalsOn} />
-          <IndToggle label="추세 영역 음영" color={upColor} on={trendBand} onChange={setTrendBand} />
+          {INDICATOR_GROUPS.map((group) => (
+            <React.Fragment key={group.id}>
+              <div className="ind-group-header" data-group-id={group.id}>{group.label}</div>
+              {group.items.map((item) => {
+                if (item.dependsOn && !indicators[item.dependsOn]) return null;
+                const extra = item.testid ? { 'data-testid': item.testid } : {};
+                return (
+                  <IndToggle
+                    key={item.key}
+                    label={item.label}
+                    color={item.color}
+                    on={getValue(item)}
+                    onChange={getSetter(item)}
+                    {...extra}
+                  />
+                );
+              })}
+            </React.Fragment>
+          ))}
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="panel-section grow">
-        <div className="panel-header">
-          <span className="panel-title">최근 신호</span>
-          <span className="panel-count mono">{instrument.signals.length}</span>
+      <CollapsibleSection sectionId="recent-signals" title="최근 신호" count={instrument.signals.length} grow>
+        <div className="signal-limit-row">
+          <label className="signal-limit-label">표시</label>
+          <select
+            className="signal-limit-select mono"
+            value={signalsLimit}
+            onChange={(e) => changeSignalsLimit(Number(e.target.value))}
+            aria-label="최근 신호 표시 개수"
+          >
+            {SIGNALS_LIMIT_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
         <div className="signal-feed">
           {recentSignals.length === 0 && <div className="empty">신호 없음</div>}
@@ -392,7 +701,7 @@ function RightPanel({ instrument, indicators, setIndicators, signalsOn, setSigna
             );
           })}
         </div>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -691,6 +1000,14 @@ function App() {
   const [now, setNow] = useState(Date.now());
 
   const [indicators, setIndicators] = useState({ ma20: true, ma60: true, ma120: false, bb: true, rpb: false, rpbBoth: false });
+  const [rightCollapsed, setRightCollapsed] = useState(() =>
+    Boolean(window.tmStorage && window.tmStorage.get('right-panel-collapsed', false))
+  );
+  function toggleRightPanel() {
+    const next = !rightCollapsed;
+    setRightCollapsed(next);
+    if (window.tmStorage) window.tmStorage.set('right-panel-collapsed', next);
+  }
   const [signalsOn, setSignalsOn] = useState(true);
   const [trendBand, setTrendBand] = useState(true);
   const [dataState, setDataState] = useState(
@@ -747,15 +1064,27 @@ function App() {
     if (window.DEMO_MODE || !dataReady) return;
     let alive = true;
     let timerId = null;
+    let reqSeq = 0;                              // monotonically increasing token
+    let lastApplied = 0;                          // highest token whose result was applied
     const ctlRef = { current: null };
 
     async function tick() {
-      if (!alive || document.visibilityState !== 'visible') return;
+      if (!alive) return;
+      // Always abort any in-flight request — both on visibility transitions and
+      // on the next interval boundary — to prevent a stale promise from
+      // overwriting newer data via a later setMarketSnap.
       if (ctlRef.current) ctlRef.current.abort();
+      if (document.visibilityState !== 'visible') return;
       ctlRef.current = new AbortController();
+      const mySeq = ++reqSeq;
       try {
         const snap = await window.api.marketSnapshot({ signal: ctlRef.current.signal, timeout: 8000 });
-        if (alive) setMarketSnap(snap);
+        // Reject out-of-order results: only apply if this is the newest response
+        // and the component is still mounted.
+        if (alive && mySeq > lastApplied) {
+          lastApplied = mySeq;
+          setMarketSnap(snap);
+        }
       } catch (_) { /* TopBar: silent fail */ }
     }
     tick();
@@ -879,7 +1208,16 @@ function App() {
           )}
         </div>
         {page === 'chart' && (
-          <div className="ws-right">
+          <div className={'ws-right' + (rightCollapsed ? ' collapsed' : '')}>
+            <button
+              className="ws-right-toggle"
+              onClick={toggleRightPanel}
+              title={rightCollapsed ? '패널 펼치기' : '패널 접기'}
+              aria-label={rightCollapsed ? '오른쪽 패널 펼치기' : '오른쪽 패널 접기'}
+              aria-expanded={!rightCollapsed}
+            >
+              <span className="ws-right-toggle-icon">{rightCollapsed ? '◀' : '▶'}</span>
+            </button>
             <RightPanel
               instrument={instrument}
               indicators={indicators}

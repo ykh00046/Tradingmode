@@ -9,7 +9,15 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+# Pydantic v2 default emits ``NaN`` / ``Infinity`` as JSON literals which
+# break strict JSON parsers (incl. browser ``JSON.parse``). Convert them to
+# ``null`` at serialisation time so the SPA never receives a non-standard
+# token. Applied to every model via the BaseModel subclass below.
+class _JsonSafeBase(BaseModel):
+    model_config = ConfigDict(ser_json_inf_nan="null")
 
 
 # =============================================================================
@@ -17,13 +25,13 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 
-class ErrorDetail(BaseModel):
+class ErrorDetail(_JsonSafeBase):
     code: str
     message: str
     details: dict = Field(default_factory=dict)
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(_JsonSafeBase):
     error: ErrorDetail
 
 
@@ -33,10 +41,10 @@ class ErrorResponse(BaseModel):
 
 
 MarketLiteral = Literal["crypto", "kr_stock"]
-IntervalLiteral = Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+IntervalLiteral = Literal["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]
 
 
-class Candle(BaseModel):
+class Candle(_JsonSafeBase):
     t: int                  # unix ms
     o: float
     h: float
@@ -45,7 +53,7 @@ class Candle(BaseModel):
     v: float
 
 
-class OHLCVResponse(BaseModel):
+class OHLCVResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     interval: IntervalLiteral
@@ -58,7 +66,7 @@ class OHLCVResponse(BaseModel):
 # =============================================================================
 
 
-class IndicatorsResponse(BaseModel):
+class IndicatorsResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     interval: IntervalLiteral
@@ -72,7 +80,7 @@ class IndicatorsResponse(BaseModel):
 # =============================================================================
 
 
-class SignalOut(BaseModel):
+class SignalOut(_JsonSafeBase):
     timestamp: int          # unix ms
     kind: str
     action: str
@@ -81,7 +89,7 @@ class SignalOut(BaseModel):
     detail: dict
 
 
-class SignalsResponse(BaseModel):
+class SignalsResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     signals: list[SignalOut]
@@ -92,7 +100,7 @@ class SignalsResponse(BaseModel):
 # =============================================================================
 
 
-class TrendResponse(BaseModel):
+class TrendResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     trend: Literal["uptrend", "downtrend", "sideways"]
@@ -105,7 +113,7 @@ class TrendResponse(BaseModel):
 # =============================================================================
 
 
-class IndicatorsAtSignal(BaseModel):
+class IndicatorsAtSignal(_JsonSafeBase):
     rsi: float | None = None
     macd: float | None = None
     macd_signal: float | None = None
@@ -116,7 +124,7 @@ class IndicatorsAtSignal(BaseModel):
     bb_lower: float | None = None
 
 
-class AIExplainRequest(BaseModel):
+class AIExplainRequest(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     interval: IntervalLiteral = "1d"
@@ -126,7 +134,7 @@ class AIExplainRequest(BaseModel):
     indicators_at_signal: IndicatorsAtSignal | None = None
 
 
-class AICommentaryResponse(BaseModel):
+class AICommentaryResponse(_JsonSafeBase):
     signal_kind: str
     timestamp: int
     summary: str
@@ -142,7 +150,7 @@ class AICommentaryResponse(BaseModel):
 # =============================================================================
 
 
-class HoldingInput(BaseModel):
+class HoldingInput(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     quantity: float = Field(gt=0)
@@ -150,26 +158,26 @@ class HoldingInput(BaseModel):
     currency: Literal["KRW", "USD", "USDT"]
 
 
-class PortfolioRequest(BaseModel):
+class PortfolioRequest(_JsonSafeBase):
     holdings: list[HoldingInput] = Field(min_length=1)
     base_currency: Literal["KRW", "USD"] = "KRW"
     as_of: int | None = None        # unix ms; ``None`` → latest
 
 
-class FxQuoteResponse(BaseModel):
+class FxQuoteResponse(_JsonSafeBase):
     pair: str
     rate: float
     as_of: int                       # unix ms
     source: str
 
 
-class SkippedHoldingResponse(BaseModel):
+class SkippedHoldingResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     reason: str
 
 
-class HoldingAnalysisResponse(BaseModel):
+class HoldingAnalysisResponse(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     quantity: float
@@ -187,7 +195,7 @@ class HoldingAnalysisResponse(BaseModel):
     latest_signals: list[SignalOut]
 
 
-class PortfolioAnalysisResponse(BaseModel):
+class PortfolioAnalysisResponse(_JsonSafeBase):
     holdings_analysis: list[HoldingAnalysisResponse]
     total_market_value: float
     total_cost_basis: float
@@ -206,7 +214,7 @@ class PortfolioAnalysisResponse(BaseModel):
 # =============================================================================
 
 
-class BacktestRequest(BaseModel):
+class BacktestRequest(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     interval: IntervalLiteral = "1d"
@@ -217,12 +225,12 @@ class BacktestRequest(BaseModel):
     commission: float = Field(default=0.0005, ge=0, lt=1)
 
 
-class EquityPoint(BaseModel):
+class EquityPoint(_JsonSafeBase):
     t: int
     equity: float
 
 
-class BacktestResultResponse(BaseModel):
+class BacktestResultResponse(_JsonSafeBase):
     total_return: float
     annual_return: float
     max_drawdown: float
@@ -239,12 +247,12 @@ class BacktestResultResponse(BaseModel):
 # =============================================================================
 
 
-class IndexQuoteResponse(BaseModel):
+class IndexQuoteResponse(_JsonSafeBase):
     value: float
     change_pct: float
 
 
-class MarketSnapshotResponse(BaseModel):
+class MarketSnapshotResponse(_JsonSafeBase):
     kospi: IndexQuoteResponse
     kosdaq: IndexQuoteResponse
     usd_krw: IndexQuoteResponse
@@ -259,7 +267,7 @@ class MarketSnapshotResponse(BaseModel):
 # =============================================================================
 
 
-class HealthResponse(BaseModel):
+class HealthResponse(_JsonSafeBase):
     status: Literal["ok"]
     version: str
 
@@ -273,7 +281,7 @@ GoalLiteral = Literal["return", "sharpe", "mdd", "win_rate"]
 RoleLiteral = Literal["filter", "exit_rule", "entry_filter", "sizing"]
 
 
-class TradingCostsModel(BaseModel):
+class TradingCostsModel(_JsonSafeBase):
     """Per-trade frictional costs in basis points (1 bp = 0.01%)."""
     commission_bps: float = Field(default=5.0, ge=0, le=100)
     slippage_bps: float = Field(default=2.0, ge=0, le=100)
@@ -281,7 +289,7 @@ class TradingCostsModel(BaseModel):
     apply_kr_tax: bool = True
 
 
-class StrategyDefModel(BaseModel):
+class StrategyDefModel(_JsonSafeBase):
     name: str = Field(min_length=1, max_length=80)
     buy_when: str = Field(min_length=1, max_length=500)
     sell_when: str = Field(min_length=1, max_length=500)
@@ -290,7 +298,7 @@ class StrategyDefModel(BaseModel):
     optimization_goal: GoalLiteral = "sharpe"
 
 
-class StrategyBacktestRequest(BaseModel):
+class StrategyBacktestRequest(_JsonSafeBase):
     market: MarketLiteral
     symbol: str
     interval: IntervalLiteral = "1d"
@@ -302,7 +310,7 @@ class StrategyBacktestRequest(BaseModel):
     persist: bool = True                         # whether to append to iteration_log
 
 
-class BacktestSplitResponse(BaseModel):
+class BacktestSplitResponse(_JsonSafeBase):
     is_result: BacktestResultResponse
     oos_result: BacktestResultResponse | None = None
     is_period_start: int                          # unix ms
@@ -317,7 +325,7 @@ class BacktestSplitResponse(BaseModel):
     attempt_no: int | None = None
 
 
-class IsResultSummary(BaseModel):
+class IsResultSummary(_JsonSafeBase):
     """Compact 6-scalar IS summary used by the coach prompt."""
     total_return: float
     annual_return: float
@@ -327,13 +335,13 @@ class IsResultSummary(BaseModel):
     num_trades: int
 
 
-class StrategyCoachRequest(BaseModel):
+class StrategyCoachRequest(_JsonSafeBase):
     strategy: StrategyDefModel
     is_result: IsResultSummary
     history_summary: list[dict] | None = None
 
 
-class CoachRecommendationModel(BaseModel):
+class CoachRecommendationModel(_JsonSafeBase):
     indicator: str
     params: dict = Field(default_factory=dict)
     role: RoleLiteral
@@ -343,7 +351,7 @@ class CoachRecommendationModel(BaseModel):
     sample_rule: str | None = None
 
 
-class CoachResponseModel(BaseModel):
+class CoachResponseModel(_JsonSafeBase):
     diagnosis: str
     recommendations: list[CoachRecommendationModel]
     warnings: list[str] = Field(default_factory=list)
@@ -352,7 +360,7 @@ class CoachResponseModel(BaseModel):
     disclaimer: str
 
 
-class BuiltinIndicatorModel(BaseModel):
+class BuiltinIndicatorModel(_JsonSafeBase):
     name: str
     columns: list[str]
     params: dict = Field(default_factory=dict)
@@ -360,13 +368,13 @@ class BuiltinIndicatorModel(BaseModel):
     category: Literal["momentum", "trend", "volatility", "volume"]
 
 
-class StrategyBuiltinsResponse(BaseModel):
+class StrategyBuiltinsResponse(_JsonSafeBase):
     indicators: list[BuiltinIndicatorModel]
     operators: list[str]
     helpers: list[str]
 
 
-class IterationEntryModel(BaseModel):
+class IterationEntryModel(_JsonSafeBase):
     iteration_id: str
     symbol: str
     interval: str
@@ -390,7 +398,7 @@ class IterationEntryModel(BaseModel):
 # === Trend series extension =================================================
 
 
-class TrendSeriesPoint(BaseModel):
+class TrendSeriesPoint(_JsonSafeBase):
     t: int                                       # unix ms
     state: Literal["uptrend", "downtrend", "sideways"]
 

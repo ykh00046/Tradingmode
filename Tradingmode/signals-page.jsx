@@ -307,7 +307,15 @@ function AIExplainer({ signal, ai, aiEnabled, onRetry, onJumpChart }) {
           <div className="ai-section-label">신호 컨텍스트</div>
           <div className="ai-ctx-grid">
             <div><span className="muted">유형</span><span className="mono">{signal.kind}</span></div>
-            <div><span className="muted">방향</span><span className={'mono ' + (signal.direction === 'buy' ? 'up' : 'down')}>{signal.direction || (ai?.data?.direction)}</span></div>
+            {/* Direction is not a backend field — derive from the signal kind
+                so the panel always shows something instead of an empty cell. */}
+            {(() => {
+              const BUY_KINDS = new Set(['golden_cross','rsi_oversold','rsi_bull_div','macd_bull_cross']);
+              const direction = signal.direction || (BUY_KINDS.has(signal.kind) ? 'buy' : 'sell');
+              return (
+                <div><span className="muted">방향</span><span className={'mono ' + (direction === 'buy' ? 'up' : 'down')}>{direction === 'buy' ? '매수' : '매도'}</span></div>
+              );
+            })()}
             <div><span className="muted">강도</span><span className="mono">{(signal.strength * 100).toFixed(0)}%</span></div>
             <div><span className="muted">발생가</span><span className="mono">{fmt.price(signal.candle.c, signal.currency)}</span></div>
             <div><span className="muted">경과</span><span className="mono">{signal.ageDays}일 전</span></div>
