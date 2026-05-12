@@ -57,3 +57,7 @@ htmlcov/
 
 # bkit local memory (keep status files but ignore session-specific)
 docs/.bkit-memory.json
+docs/.pdca-snapshots/
+
+# Unrelated nested project (do not commit into Tradingmode)
+chromex/
