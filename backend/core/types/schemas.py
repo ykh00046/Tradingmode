@@ -30,6 +30,8 @@ class Interval(str, Enum):
     H1 = "1h"
     H4 = "4h"
     D1 = "1d"
+    W1 = "1w"      # weekly
+    MN1 = "1M"     # monthly (MoNth — distinct from M1 minute)
 
 
 class TrendState(str, Enum):

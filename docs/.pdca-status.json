@@ -1,20 +1,37 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-04-30T05:00:00.000Z",
-  "activeFeatures": ["ux-improvements"],
-  "primaryFeature": "ux-improvements",
+  "lastUpdated": "2026-05-07T00:00:00.000Z",
+  "activeFeatures": [],
+  "primaryFeature": null,
   "features": {
+    "longer-intervals": {
+      "phase": "archived",
+      "level": "Dynamic",
+      "createdAt": "2026-05-05",
+      "archivedAt": "2026-05-07",
+      "archivedTo": "docs/archive/2026-05/longer-intervals/",
+      "documents": {
+        "plan": "docs/archive/2026-05/longer-intervals/longer-intervals.plan.md",
+        "design": "docs/archive/2026-05/longer-intervals/longer-intervals.design.md",
+        "analysis": "docs/archive/2026-05/longer-intervals/longer-intervals.analysis.md",
+        "report": "docs/archive/2026-05/longer-intervals/longer-intervals.report.md"
+      },
+      "matchRate": 99,
+      "iteration": 1
+    },
     "ux-improvements": {
-      "phase": "plan",
+      "phase": "archived",
       "level": "Dynamic",
       "createdAt": "2026-05-02",
+      "archivedAt": "2026-05-04",
+      "archivedTo": "docs/archive/2026-05/ux-improvements/",
       "documents": {
-        "plan": "docs/01-plan/features/ux-improvements.plan.md",
-        "design": null,
-        "analysis": null,
-        "report": null
+        "plan": "docs/archive/2026-05/ux-improvements/ux-improvements.plan.md",
+        "design": "docs/archive/2026-05/ux-improvements/ux-improvements.design.md",
+        "analysis": "docs/archive/2026-05/ux-improvements/ux-improvements.analysis.md",
+        "report": "docs/archive/2026-05/ux-improvements/ux-improvements.report.md"
       },
-      "matchRate": null,
+      "matchRate": 96,
       "iteration": 0
     },
     "rsi-price-bands": {
@@ -141,6 +158,139 @@
       "action": "plan-created",
       "note": "신규 사이클: 사용자 커스텀 전략 + AI 코치 + 70/30 holdout + iteration 이력. Project v0.5.0.",
       "phase": "plan"
+    },
+    {
+      "timestamp": "2026-05-02",
+      "feature": "ux-improvements",
+      "action": "design-created",
+      "note": "Design v0.1 — 10 FRs를 컴포넌트/CSS/localStorage 키 단위로 구체화. lib/storage.js + INTERVAL_LABELS + INDICATOR_GROUPS + useViewportWidth. Phase A~C 4h.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "design-validator-fixes-v0.2",
+      "note": "검증 78% → 보강. C-1 RPB 컬럼명/임계값 정정 (RPB_DN_, 70/75/80↔30/25/20). C-2 INDICATOR_GROUPS 실제 state(ma20/ma60/ma120/bb/rpb/rpbBoth/signalsOn/trendBand)로 재작성. C-3/C-4 Interval/Zoom app.jsx 정정 (.tf-group/.tf-btn/.chart-pane). H-1 .panel-section 유지+.collapsed. H-2 compound-class 통일. H-3 T-13 추가. M-1 storage.js 로드 슬롯 명시.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "design-validator-fixes-v0.3",
+      "note": "재검증 91% → 보강. N-1 T-01 클래스 .tf-group--minute. N-2 divider 클래스 tf-divider 통일. N-3 var(--border) (실존 토큰). N-4/N-5 .chart-pane/.signal-feed 기존 적용 명시. 목표 95%+ → /pdca do 진행 가능.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "do-phase-a-completed",
+      "note": "Phase A: app.jsx INTERVAL_LABELS + INTERVAL_GROUP_ORDER 상수 추가, .ih-right 안 단일 .tf-group → 3 그룹(.tf-group--minute/hour/day) + .tf-divider 2개로 분할, Zoom .tf-group을 .ih-right에서 분리해 첫 .chart-pane(420px) 내부 .zoom-fab(absolute top-right)로 이동. styles.css에 .tf-group--*, .tf-divider, .zoom-fab CSS ~30 lines 추가. Playwright T-01~T-03 사용자 브라우저 검증 대기.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "do-phase-b-completed",
+      "note": "Phase B: Tradingmode/lib/storage.js 신규 (window.tmStorage IIFE, prefix 'tradingmode-'). index.html script slot 등록 (loader.js 다음, plain JS, type=text/babel 아님) + 캐시 버스트 v8→v9 일괄. app.jsx INDICATOR_GROUPS 상수 4그룹(추세/변동성/선행(RPB)/표시) + CollapsibleSection 헬퍼 컴포넌트 + RightPanel 3섹션을 sectionId(current-status/indicators-overlay/recent-signals)로 래핑. dependsOn:rpb 보존. styles.css collapsible CSS는 .right-panel 스코프 한정(BacktestPage .panel-section 회귀 방지) + .ind-group-header. T-04~T-06 사용자 브라우저 검증 대기.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "do-phase-c-completed",
+      "note": "Phase C: app.jsx에 formatPriceCompact + useViewportWidth 헬퍼. TopBar 1280/1024 분기(<1024 essential 3개만, <1280 compact 포맷), Tape에 title 추가(원값 hover). Watchlist에 wl-favs localStorage + ★ span(role=button, 중첩 button 회피, aria-pressed) + favRows/nonFavRows 정렬 + .wl-favs-divider + universe stale 정리 useEffect. RightPanel SIGNALS_LIMIT_OPTIONS [10/20/50/100] + signal-limit-row select(localStorage 'signals-limit' 영속). styles.css .wl-row grid 18px+1fr+80+64+100, .wl-fav 호버 scale(1.15), .wl-row.is-fav 옅은 골드 배경, .signal-limit-* + topbar 미디어쿼리(1279/1023 gap 축소). T-07~T-13 사용자 브라우저 검증 대기.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "analyze-completed",
+      "note": "gap-detector: 96% match. Critical/High 0건, Medium 2건(M-1 ind-groups-collapsed 미사용 키, M-2 oklch 값 drift), Low 2건(L-1 dataTestid→testid, L-2 trendBand var(--up) 미사용). FR 10/10, T-NN 13/13 feasibility. backend/charts.jsx grep 0건 → FR-10 isolation 완벽. iterate 불필요(>=90%) → /pdca report 진행 가능.",
+      "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-03",
+      "feature": "ux-improvements",
+      "action": "report-generated",
+      "note": "report-generator: 통합 완료 보고서 생성 (docs/04-report/features/ux-improvements.report.md, 368 lines). Executive Summary + Cycle Timeline + 10 FR 전수 + 6 Architecture Decisions + 4 Gap follow-up + 5 Process Lessons + v0.8 로드맵. 96% match, FR 10/10, T 13/13 feasibility, 백엔드 무영향 첫 사이클.",
+      "phase": "completed"
+    },
+    {
+      "timestamp": "2026-05-04",
+      "feature": "ux-improvements",
+      "action": "archived",
+      "note": "4 PDCA 문서를 docs/archive/2026-05/ux-improvements/ 로 이동 (plan/design/analysis/report). _INDEX.md 갱신: 학습 효과 표에 v0.7.0 행 추가(첫 100% Frontend, 78%→96%), Architecture Decisions 6 + Process Lessons 5 보존. activeFeatures 비움, primaryFeature null. v0.4-v0.7 4 사이클 누적 — Critical/High 0건 4연속.",
+      "phase": "archived"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "plan-created",
+      "note": "v0.8.0 신규 사이클: 주(1w) + 월(1M) 봉 추가. 사용자 직접 지적('차트 위에 왜 주/월봉이 없냐') 후 시작. Crypto = Binance 네이티브 _INTERVAL_MAP +2, KR = pykrx 일봉 → pandas resample('W-FRI'/'ME'). Backend Interval enum 확장 + IntervalLiteral. Frontend INTERVAL_LABELS +2 + INTERVAL_GROUP_ORDER 'longer' 4번째 그룹. 10 FRs, ~3h 예상.",
+      "phase": "plan"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "design-created",
+      "note": "Design v0.1 — 10 FRs를 백엔드 enum(W1/MN1)/literal/어댑터(_INTERVAL_MAP +2, _resample_ohlcv)/pytest(T-B1~B4) + 프론트엔드 상수(LABELS+2, ORDER+1, LOOKBACK+2)/CSS(.tf-group--longer) 단위로 구체화. v0.7 78% 첫 검증 교훈 반영 — 코드 사실관계 사전 검증 완료(line 번호/함수명 모두 verified). pandas 'ME' (2.x) + 'W-FRI' (KR 거래일 종료) 결정. Phase A 30분 + B 1.5h + C 45분 = ~3h.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "design-validator-fixes-v0.2",
+      "note": "검증 92% → 보강. v0.7 78% 대비 +14pt (사전 그라운딩 효과 입증). H-1 IntervalLiteral 사용처 Pydantic 5 + Query 5 분리 명시. M-1 line 51/64/122 클래스명 정정. M-2 cache 의미 명시 (resampled 결과만 캐시). L-1 intervalReqRef race-guard line citation. 목표 95%+ → /pdca do 진행 가능.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "do-phase-a-completed",
+      "note": "Phase A: backend Interval enum +W1/MN1, IntervalLiteral +'1w','1M', binance _INTERVAL_MAP +2 entries. pytest data_loader 4/4 + indicators 29 + signals 10 + trend 9 + api 31 = 77 PASSED, 사전 환경 문제(backtesting 미설치)로 인한 3 strategy failure 제외 회귀 0. 인터벌 enum 변경으로 인한 회귀 0건 확인.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "do-phase-b-completed",
+      "note": "Phase B: krx_adapter _INTERVAL_TO_FREQ + _SUPPORTED_INTERVALS + _RESAMPLE_BUFFER_DAYS + _ensure_supported_interval + _resample_ohlcv (open=first, high=max, low=min, close=last, volume=sum, dropna(close)). download() 분기 — 1d 면 raw, 1w/1M 면 daily +buffer fetch 후 resample. 빈 결과 시 DataSourceError 'insufficient daily data'. tests/test_data_loader.py에 T-B1~T-B4 4건 추가. **8/8 PASSED** (기존 4 + 신규 4).",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-05",
+      "feature": "longer-intervals",
+      "action": "do-phase-c-completed",
+      "note": "Phase C: app.jsx INTERVAL_LABELS +2('1w':'주', '1M':'월', group:'longer') + INTERVAL_GROUP_ORDER +'longer'. loader.js LOOKBACK_BY_INTERVAL +2('1w':730, '1M':3650). styles.css .tf-group--longer 1줄. index.html v11→v12 일괄. 코드 인라인 NB 주석으로 '1m' vs '1M' case-sensitive 명시. T-F1~T-F5 사용자 브라우저 검증 대기.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-06",
+      "feature": "longer-intervals",
+      "action": "analyze-completed",
+      "note": "gap-detector: 97% match. Critical/High 0건, Medium 1건(M-1 T-B3 NaN-injection 의도-구현 mismatch — 진짜 minimum-bars guard 부재, v0.9 권장), Low 4건(L-1 race-guard line drift, L-2 에러 메시지 한국어화, L-3 MN1 enum 명 design improvement, L-4 case-sensitive 형식적 검증 부재). FR 10/10, T-B1~T-B4 4/4 PASSED, T-F1~T-F5 structural feasibility 100%. v0.4-v0.8 5 사이클 누적 — Critical/High 0건 5연속. iterate 불필요(>=90%) → /pdca report 진행 가능.",
+      "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-06",
+      "feature": "longer-intervals",
+      "action": "cleanup-iterate-1",
+      "note": "Cleanup 1회 (수동): 97% → 99%. M-1 해소 — krx_adapter `_MIN_DAILY_FOR_INTERVAL = {1w:5, 1M:15}` minimum-bars guard 추가 (download() 진입 직후, resample 전). 신규상장 종목 partial bucket 누출 차단. T-B3 진짜 검증 (3 daily rows + min_required=5 details), T-B3b 분리 (all-NaN closes 방어 path). T-B1 fixture 14→10일 + 정확 count 검증 (== 2 bucket), T-B2 정확 count (== 2). L-1 design line citation 312/340/344/350. L-2 frontend localizeIntervalError 한국어 매핑 헬퍼 (insufficient daily / unsupported / no data / timeout / rate limit 5 패턴). L-4 _assertIntervalKeysDistinct IIFE 런타임 검증 (8 keys, 1m≠1M, group 일치). C-3 T-B1/B2 == count 정확. Plan FR-09 + Design §8.2 backtesting env caveat 명시. 9/9 pytest PASSED. v12→v13 캐시 버스트.",
+      "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-06",
+      "feature": "longer-intervals",
+      "action": "report-generated",
+      "note": "report-generator: 통합 완료 보고서 생성 (docs/04-report/features/longer-intervals.report.md, 367 lines). Executive Summary + 8단계 Cycle Timeline + 10 FR 전수 + 8 Architecture Decisions + Backend Isolation 검증 + 5 Process Lessons + v0.9 로드맵. 99% match (97% baseline + cleanup +2pt), 9/9 pytest PASSED, ~3.5h 총 (3h Phase A/B/C + 30min cleanup), Critical/High 0건 5 사이클 연속.",
+      "phase": "completed"
+    },
+    {
+      "timestamp": "2026-05-07",
+      "feature": "longer-intervals",
+      "action": "archived",
+      "note": "4 PDCA 문서를 docs/archive/2026-05/longer-intervals/ 로 이동. _INDEX.md 갱신: 학습 효과 표 5 사이클로 확장 (v0.4-v0.8), v0.8 섹션 추가 (8 Architecture Decisions + 5 Process Lessons), 핵심 잠언 누적 섹션 신설. activeFeatures 비움, primaryFeature null. v0.4-v0.8 5 사이클 누적 — Critical/High 0건 5연속, 평균 매치율 97% (95/97/98/96/99).",
+      "phase": "archived"
     }
   ]
 }
