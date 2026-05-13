@@ -44,8 +44,21 @@ _STARTED_AT = time.monotonic()
 log = get_logger(__name__)
 
 
+# Cache the disk-write probe so /api/health stays cheap under load —
+# without this, every request paid ~100ms for write+unlink. 5s TTL is short
+# enough to detect a permission flip within one polling cycle.
+_CACHE_WRITABLE_TTL_SEC = 5.0
+_cache_writable_cached: tuple[float, bool] | None = None
+
+
 def _cache_writable() -> bool:
-    """Probe whether the OHLCV cache directory is writable. Cheap (sub-ms)."""
+    """Probe whether the OHLCV cache directory is writable. Result cached
+    for ``_CACHE_WRITABLE_TTL_SEC`` so high-frequency /api/health pollers
+    don't incur per-request disk IO."""
+    global _cache_writable_cached
+    now = time.monotonic()
+    if _cache_writable_cached and (now - _cache_writable_cached[0]) < _CACHE_WRITABLE_TTL_SEC:
+        return _cache_writable_cached[1]
     try:
         from lib import cache
 
@@ -53,9 +66,11 @@ def _cache_writable() -> bool:
         probe = root / ".write_probe"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
-        return True
+        ok = True
     except Exception:
-        return False
+        ok = False
+    _cache_writable_cached = (now, ok)
+    return ok
 
 
 # =============================================================================
