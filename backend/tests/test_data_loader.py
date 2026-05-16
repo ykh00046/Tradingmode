@@ -249,6 +249,32 @@ def test_binance_weekly_monthly_routed_natively(mocker, writable_tmp_dir) -> Non
     assert "1M" in called_intervals
 
 
+def test_kr_resample_accepts_tz_aware_start(mocker, writable_tmp_dir) -> None:
+    """R-3 (regression, 2026-05-16) — KR weekly/monthly resample with a
+    *tz-aware* ``start``.
+
+    The real API path builds ``start`` via ``converters.ms_to_ts``, which
+    returns a tz-aware (UTC) Timestamp. ``krx_adapter`` trims the resampled
+    frame with ``resampled.index >= start``; the resampled index is tz-naive,
+    so a tz-aware ``start`` raised ``TypeError: Invalid comparison``. The T-B
+    tests above use a naive ``start`` and never exercised this path.
+    """
+    mocker.patch("core.data_loader.cache.cache_root", return_value=writable_tmp_dir)
+    daily = _kr_daily_df(num_days=60, start_date="2024-01-01")
+    mocker.patch("core.adapters.krx_adapter._try_pykrx", return_value=daily)
+
+    for interval in (Interval.W1, Interval.MN1):
+        req = FetchRequest(
+            market=Market.KR_STOCK,
+            symbol="005930",
+            interval=interval,
+            start=pd.Timestamp("2024-01-01", tz="UTC"),   # tz-aware — real API path
+            end=pd.Timestamp("2024-04-01", tz="UTC"),
+        )
+        result, _ = data_loader.fetch(req)
+        assert len(result) > 0, f"{interval.value}: expected resampled candles"
+
+
 # =============================================================================
 # Schema sync — Interval enum (core) vs IntervalLiteral (api)
 # =============================================================================

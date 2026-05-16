@@ -56,9 +56,10 @@ def _wilder_ewm(series: pd.Series, length: int) -> pd.Series:
     return series.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
 
 
-def _bb_col(prefix: str, length: int, std: float) -> str:
-    std_str = f"{float(std):.1f}"
-    return f"{prefix}_{length}_{std_str}_{std_str}"
+def _bb_col(prefix: str, length: int) -> str:
+    # Dot-free name — dots break the strategy DSL's ast.parse (a column
+    # reference must be a valid Python identifier). std is fixed per compute.
+    return f"{prefix}_{length}"
 
 
 # =============================================================================
@@ -135,9 +136,9 @@ def add_bbands(
 
     mid = out["close"].rolling(window=length, min_periods=length).mean()
     sigma = out["close"].rolling(window=length, min_periods=length).std(ddof=0)
-    out[_bb_col("BBL", length, std)] = mid - sigma * std
-    out[_bb_col("BBM", length, std)] = mid
-    out[_bb_col("BBU", length, std)] = mid + sigma * std
+    out[_bb_col("BBL", length)] = mid - sigma * std
+    out[_bb_col("BBM", length)] = mid
+    out[_bb_col("BBU", length)] = mid + sigma * std
     return out
 
 

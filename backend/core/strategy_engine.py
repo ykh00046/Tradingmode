@@ -427,7 +427,7 @@ BUILTIN_INDICATORS: list[BuiltinIndicator] = [
     ),
     BuiltinIndicator(
         name="Bollinger Bands",
-        columns=["BBL_20_2.0_2.0", "BBM_20_2.0_2.0", "BBU_20_2.0_2.0"],
+        columns=["BBL_20", "BBM_20", "BBU_20"],
         params={"length": 20, "std": 2.0},
         description="볼린저 밴드 — 변동성 + 평균회귀",
         category="volatility",

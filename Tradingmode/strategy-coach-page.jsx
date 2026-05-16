@@ -29,8 +29,8 @@ const TEMPLATES = [
   },
   {
     name: 'BB Squeeze',
-    buy_when: 'close < BBL_20_2.0_2.0 and RSI_14 < 40',
-    sell_when: 'close > BBM_20_2.0_2.0',
+    buy_when: 'close < BBL_20 and RSI_14 < 40',
+    sell_when: 'close > BBM_20',
   },
   {
     name: 'RSI Imminent',

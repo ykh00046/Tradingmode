@@ -24,9 +24,9 @@ function buildIndicatorPayload(candles, opts = {}) {
     MACD_12_26_9: Array(n).fill(0.4),
     MACDs_12_26_9: Array(n).fill(0.2),
     MACDh_12_26_9: Array(n).fill(0.2),
-    'BBM_20_2.0_2.0': Array(n).fill(100),
-    'BBU_20_2.0_2.0': Array(n).fill(110),
-    'BBL_20_2.0_2.0': Array(n).fill(90),
+    BBM_20: Array(n).fill(100),
+    BBU_20: Array(n).fill(110),
+    BBL_20: Array(n).fill(90),
     ...(opts.includeRpb !== false ? rpb : {}),
     // For padding test: provide a deliberately-short SMA_20 series (length 2)
     // so getColumn must front-pad with nulls to reach candle length.

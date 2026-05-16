@@ -64,9 +64,9 @@
         hist:   getColumn(indDict, 'MACDh_12_26_9', candleCount),
       },
       bb: {
-        mid: getColumn(indDict, 'BBM_20_2.0_2.0', candleCount),
-        up:  getColumn(indDict, 'BBU_20_2.0_2.0', candleCount),
-        lo:  getColumn(indDict, 'BBL_20_2.0_2.0', candleCount),
+        mid: getColumn(indDict, 'BBM_20', candleCount),
+        up:  getColumn(indDict, 'BBU_20', candleCount),
+        lo:  getColumn(indDict, 'BBL_20', candleCount),
       },
       // RSI Price Band — RSI 역산 가격 밴드 (v0.6)
       rpb: {

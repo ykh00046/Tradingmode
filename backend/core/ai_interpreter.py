@@ -114,10 +114,8 @@ def _build_user_prompt(
         "macd": _round_or_dash(bar.get("MACD_12_26_9")),
         "macd_signal": _round_or_dash(bar.get("MACDs_12_26_9")),
         "adx_14": _round_or_dash(bar.get("ADX_14")),
-        # Bollinger column name carries the std value twice (self-imposed
-        # convention via core.indicators._bb_col, retained for cache stability).
-        "bb_upper": _round_or_dash(bar.get("BBU_20_2.0_2.0")),
-        "bb_lower": _round_or_dash(bar.get("BBL_20_2.0_2.0")),
+        "bb_upper": _round_or_dash(bar.get("BBU_20")),
+        "bb_lower": _round_or_dash(bar.get("BBL_20")),
     }
 
     return (

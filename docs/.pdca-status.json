@@ -1,9 +1,18 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-05-07T00:00:00.000Z",
-  "activeFeatures": [],
-  "primaryFeature": null,
+  "lastUpdated": "2026-05-16T00:00:00.000Z",
+  "activeFeatures": ["improvement-plan"],
+  "primaryFeature": "improvement-plan",
   "features": {
+    "improvement-plan": {
+      "phase": "do",
+      "level": "Dynamic",
+      "createdAt": "2026-05-16",
+      "documents": {
+        "plan": "docs/improvement-plan.md",
+        "design": "docs/02-design/features/improvement-plan.design.md"
+      }
+    },
     "longer-intervals": {
       "phase": "archived",
       "level": "Dynamic",
@@ -291,6 +300,34 @@
       "action": "archived",
       "note": "4 PDCA 문서를 docs/archive/2026-05/longer-intervals/ 로 이동. _INDEX.md 갱신: 학습 효과 표 5 사이클로 확장 (v0.4-v0.8), v0.8 섹션 추가 (8 Architecture Decisions + 5 Process Lessons), 핵심 잠언 누적 섹션 신설. activeFeatures 비움, primaryFeature null. v0.4-v0.8 5 사이클 누적 — Critical/High 0건 5연속, 평균 매치율 97% (95/97/98/96/99).",
       "phase": "archived"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "design-created",
+      "note": "신규 사이클(v0.10.0): 2026-05-16 세션 전수 검토 결과 — 검증 성숙도가 외형 완성도를 못 따라가는 격차. docs/improvement-plan.md(Plan 기준)의 P0/P1/P2를 설계 문서로 구체화. P0-1 통합/회귀 테스트(세션 버그 9건 재현 + 빌트인 5종 backtest), P0-2 프론트 스모크(5탭 pageerror 0), P1-1 지표 패리티 골든 테스트, P2-1~5 기능 개선 스케치. Plan은 PDCA 표준 경로 대신 docs/improvement-plan.md 사용(사용자 지정).",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "design-validator-fixes-v0.2",
+      "note": "설계 검증 — 인용 코드 사실관계 대조(약 80%, High 2 + Medium 3 + Low 2). F1 R-3(KR tz)을 patch_fetch로 못 잡음(data_loader.fetch 통째 교체→krx_adapter resample 미실행)→어댑터 레벨 재설계. F2 rpb가 data.js helpers에 미export→골든테스트 선행 export 명시. F3 세션 버그를 P0-1(백엔드 회귀)/P0-2(프론트 스모크)로 분류. F4 신규 golden_ohlcv 폐기, 기존 conftest 픽스처 재사용. F5 Playwright requirements-dev.txt 관리 명시. F6 MACD 인덱스 하드코딩 완화. F7 project_version 0.10.0 확인. 설계 v0.1→v0.2.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "do-phase-1-completed",
+      "note": "Phase 1 (P0-1 백엔드 회귀/통합 테스트) 구현. tests/test_api/test_regression.py 신규 — R-1(빌트인 5종 backtest parametrize) · R-2(or/not 식) · R-4(MACD 시그널선 워밍업) · R-5(신호 shape). tests/test_data_loader.py에 R-3 추가 — KR 주/월봉 tz-aware start 회귀(어댑터 레벨, naive start만 쓰던 기존 T-B 테스트의 빈틈). **신규 버그 발견**: R-1이 BB Squeeze 빌트인을 잡음 — BB 컬럼명 BBL_20_2.0_2.0에 점(.)이 있어 DSL ast.parse 실패('syntax error'). 6번째 깨진 빌트인. strict xfail로 문서화(수정 시 xpass로 플래그). 백엔드 173 passed + 1 xfailed.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "do-phase-1-bb-column-fix",
+      "note": "P0-1이 발견한 BB Squeeze 버그 수정. BB 컬럼명 BBL_20_2.0_2.0/BBM/BBU의 점(.) 제거 → BBL_20/BBM_20/BBU_20. _bb_col 헬퍼가 단일 생성 지점. 9개 파일 변경(indicators.py·strategy_engine.py·ai_interpreter.py·test_indicators.py·test_ai_interpreter.py·loader.js·strategy-coach-page.jsx·loader.test.mjs + test_regression.py xfail 제거). 백엔드 174 passed(xfail→정상 통과), 프론트 loader 통과. 백엔드 재시작 후 라이브 BBL_20 emit 확인.",
+      "phase": "do"
     }
   ]
 }

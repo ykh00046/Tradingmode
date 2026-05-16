@@ -89,7 +89,7 @@ def test_add_macd_columns(trending_up_df: pd.DataFrame) -> None:
 def test_add_bbands_ordering(trending_up_df: pd.DataFrame) -> None:
     """For every bar with valid bands: lower <= middle <= upper."""
     out = indicators.add_bbands(trending_up_df)
-    bbl, bbm, bbu = "BBL_20_2.0_2.0", "BBM_20_2.0_2.0", "BBU_20_2.0_2.0"
+    bbl, bbm, bbu = "BBL_20", "BBM_20", "BBU_20"
     valid = out[[bbl, bbm, bbu]].dropna()
     assert (valid[bbl] <= valid[bbm]).all()
     assert (valid[bbm] <= valid[bbu]).all()
@@ -127,8 +127,7 @@ def test_compute_appends_all_columns(trending_up_df: pd.DataFrame) -> None:
         "SMA_20", "SMA_60", "SMA_120",
         "RSI_14",
         "MACD_12_26_9", "MACDs_12_26_9", "MACDh_12_26_9",
-        # pandas-ta 0.4.x emits BB names with the std value duplicated
-        "BBL_20_2.0_2.0", "BBM_20_2.0_2.0", "BBU_20_2.0_2.0",
+        "BBL_20", "BBM_20", "BBU_20",
         "ADX_14", "DMP_14", "DMN_14",
     }
     assert expected.issubset(set(out.columns))
