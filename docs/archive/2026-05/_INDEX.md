@@ -6,6 +6,47 @@
 
 ## 📦 Archived Features
 
+### 5. build-pipeline (v0.11.0)
+
+| 항목 | 값 |
+|---|---|
+| **종료일** | 2026-05-17 |
+| **최종 Match Rate** | **98%** (Critical/High/Medium 0건) |
+| **Iterations** | 0 (98% ≥ 90%, iterate 불필요) |
+| **상태** | completed → archived |
+| **GitHub** | https://github.com/ykh00046/Tradingmode |
+| **사이클 크기** | 작은 사이클 (~1일, 단일 세션) |
+
+**한 줄 요약**: improvement-plan P1-2를 별도 사이클로 분리. 프론트엔드의 브라우저 내 `@babel/standalone` 변환(매 로드 ~4,240줄 JSX 재변환·콘솔 경고·dev React 배포)을 **esbuild 사전 컴파일**로 대체. 접근 **A-최소** — esbuild 비번들 파일 단위 변환으로 전역 스코프 + 로드 순서 구조 보존, 소스는 2줄만 수정. `build.mjs`(prod/`--dev` 분기), React production UMD를 `build/vendor/`로 vendor, `genIndexHtml`이 `@babel/standalone`·`text/babel` 제거 + `BUILD_ID` 캐시 무효화. `smoke.py`를 빌드 산출물 대상으로 전환.
+
+**보관 문서** (`./build-pipeline/`)
+
+| 문서 | 설명 |
+|------|------|
+| [build-pipeline.plan.md](build-pipeline/build-pipeline.plan.md) | Plan — 진단·8 FR·esbuild vs Vite·A-최소 권장 |
+| [build-pipeline.design.md](build-pipeline/build-pipeline.design.md) | Design v0.3 — v0.2 검증(F1~F5) + v0.3 const/var 발견(§13) |
+| [build-pipeline.analysis.md](build-pipeline/build-pipeline.analysis.md) | Gap v1.0 — 98% match, Critical/High/Medium 0 |
+| [build-pipeline.report.md](build-pipeline/build-pipeline.report.md) | 통합 완료 보고서 |
+
+**핵심 결과**
+
+- 신규 `package.json` + `package-lock.json`(esbuild 0.25.12 고정) + `build.mjs`
+- `npm run build` 단일 명령 → `build/` 자기완결 정적 배포 단위 (index.html + 10 .js + vendor + styles.css)
+- `npm run dev` watch + serve :5173 — dev에도 브라우저 내 Babel 없음
+- `smoke.py` 빌드 산출물 대상 전환 — **12/12** (npm install·build 2 + 기존 10), page error 0 · console warning 0
+- 소스 변경 **2줄** — `charts.jsx`·`app.jsx`의 React-훅 구조분해 `const`→`var`
+- 백엔드 무영향
+
+**Decisions / Lessons worth remembering**
+
+1. **esbuild A-최소** — 비번들 파일 단위 변환이 전역 스코프·로드 순서 구조를 보존. Vite/ESM 리팩터는 개발 경험 병목 시 후속 사이클로.
+2. **잠재 `const` 스코프 취약점 발견** — `app.jsx`·`charts.jsx`가 둘 다 최상위 `const {useState,...} = React` 선언. 원본은 `@babel/standalone`의 ES5 다운컴파일(`const`→`var`) 덕에 *우연히* 동작. 빌드 전환이 표면화 → `const`→`var` 2줄로 근본 수정.
+3. **"실행됨 ≠ 견고함"** — 빌드 단계 도입은 우연히 동작하던 코드를 드러낸다. v0.10 "테스트 통과 ≠ 기능 동작"의 사촌.
+4. **React vendor 복사** — npm 설치 후 UMD prod를 `build/vendor/`로 복사. 동일 출처(SRI 불요) + lockfile 재현성 + 빌드 시 네트워크 0.
+5. **검증 레이어 회수** — improvement-plan이 구축한 스모크 테스트가 이번 빌드 전환의 회귀를 즉시 포착. P0 투자가 다음 사이클에서 바로 값을 함.
+
+---
+
 ### 4. improvement-plan (v0.10.0)
 
 | 항목 | 값 |
@@ -187,7 +228,7 @@
 
 ---
 
-## 📊 학습 효과 정량화 (전체 6 사이클 누적)
+## 📊 학습 효과 정량화 (전체 7 사이클 누적)
 
 | 사이클 | Design 첫 검증 | Design 보강 후 | 구현 매치율 | Iterate | 비고 |
 |--------|---------------:|---------------:|------------:|:-------:|------|
@@ -196,7 +237,8 @@
 | v0.6.0 rsi-price-bands | 91% | 95% | 98% | 0회 | Pine Script 채택 |
 | v0.7.0 ux-improvements | 78% | 96% | 96% | 0회 | 첫 100% Frontend |
 | v0.8.0 longer-intervals | 92% | 96% | 99% | 1회 (manual) | 주/월봉 + KR resample |
-| **v0.10.0 improvement-plan** | **~80%** | **—** | **99%** | **0회** | **검증 레이어(P0+P1) + P2 4종 + OBV** |
+| v0.10.0 improvement-plan | ~80% | — | 99% | 0회 | 검증 레이어(P0+P1) + P2 4종 + OBV |
+| **v0.11.0 build-pipeline** | **—** | **—** | **98%** | **0회** | **esbuild 빌드 파이프라인 — 브라우저 내 Babel 제거** |
 
 **관찰**:
 - v0.8 첫 검증 92% — v0.7 78% 대비 **+14pt 회복**. v0.7 lesson #1 ("design 작성 전 grep") 효과 입증. 5 사이클 중 두 번째로 높은 첫 검증 점수 (v0.6 91% 다음).
@@ -213,6 +255,7 @@
 - **v0.7**: Design 작성 전 코드 grep 필수 (`.cp-*` 같은 가공 클래스 0건)
 - **v0.8**: Backend → Frontend 에러 매핑은 feature 가 아닌 reusable 인프라
 - **v0.10**: 테스트 통과 ≠ 기능 동작 — 대표 입력으로 실사용 경로를 검증해야 한다
+- **v0.11**: 실행됨 ≠ 견고함 — 빌드 단계 도입은 우연히 동작하던 코드를 표면화한다
 
 ---
 

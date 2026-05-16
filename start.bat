@@ -34,6 +34,13 @@ if not exist "%ROOT%Tradingmode\index.html" (
 
 if not exist "%ROOT%data" mkdir "%ROOT%data"
 
+if not exist "%ROOT%Tradingmode\node_modules" (
+  echo [setup] Installing frontend build dependencies ^(first run, may take a minute^) ...
+  cd /d "%ROOT%Tradingmode"
+  call npm install
+  cd /d "%ROOT%"
+)
+
 echo [1/2] Starting backend on http://127.0.0.1:8000 ...
 start "" "%ROOT%_backend.cmd"
 
@@ -51,19 +58,19 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/2] Starting frontend on http://localhost:5500 ...
+echo [2/2] Starting frontend dev server on http://localhost:5173 ...
 start "" "%ROOT%_frontend.cmd"
 
-timeout /t 2 /nobreak > nul
-start "" "http://localhost:5500/"
+timeout /t 6 /nobreak > nul
+start "" "http://localhost:5173/"
 
 echo.
 echo ============================================================
 echo  Running. Two cmd windows opened (Backend / Frontend).
 echo ------------------------------------------------------------
-echo  Frontend     : http://localhost:5500/
+echo  Frontend     : http://localhost:5173/
 echo  Backend docs : http://localhost:8000/docs
-echo  Demo mode    : http://localhost:5500/?demo=1
+echo  Demo mode    : http://localhost:5173/?demo=1
 echo ------------------------------------------------------------
 echo  To stop      : run stop.bat, or close the two cmd windows
 echo ============================================================

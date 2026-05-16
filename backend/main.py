@@ -92,7 +92,7 @@ app = FastAPI(
 _cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins = [
     o.strip()
-    for o in (_cors_env or "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000").split(",")
+    for o in (_cors_env or "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000").split(",")
     if o.strip()
 ]
 if _cors_env is None:

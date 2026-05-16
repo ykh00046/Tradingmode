@@ -1,7 +1,8 @@
 @echo off
-title Tradingmode Frontend (http.server :5500)
+title Tradingmode Frontend (esbuild dev :5173)
 cd /d "%~dp0Tradingmode"
-"%~dp0.venv\Scripts\python.exe" -m http.server 5500
+if not exist node_modules (echo [setup] installing frontend dependencies, first run only... & call npm install)
+call npm run dev
 echo.
 echo ============================================================
 echo  Frontend stopped. Press any key to close this window.
