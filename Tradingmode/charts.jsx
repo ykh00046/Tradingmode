@@ -131,6 +131,21 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
     return d;
   }
 
+  // Like pathFrom but clamps y to the pane — used for RPB lines, whose
+  // projected band price can sit far outside the candle price range.
+  // Without this the line silently vanishes past the pane edge.
+  function pathFromClamped(arr) {
+    let d = '';
+    for (let i = 0; i < slice.length; i++) {
+      const v = arr[from + i];
+      if (v == null) continue;
+      const x = xAt(i);
+      const y = Math.max(padT, Math.min(padT + H, yAt(v)));
+      d += (d ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    }
+    return d;
+  }
+
   const trendColor = (t) => (t === 'up' ? upColor : t === 'down' ? downColor : 'rgba(180,180,200,0.18)');
 
   return (
@@ -205,16 +220,16 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
           <g className="rpb-overlay">
             {showUp && (
               <>
-                <path className="rpb-line" data-rpb="UP_80" d={pathFrom(ind.rpb.up[80])} {...lineProps(upColorRpb, 0.5, 1, '4 3')} />
-                <path className="rpb-line" data-rpb="UP_75" d={pathFrom(ind.rpb.up[75])} {...lineProps(upColorRpb, 0.85, 2)} />
-                <path className="rpb-line" data-rpb="UP_70" d={pathFrom(ind.rpb.up[70])} {...lineProps(upColorRpb, 1, 1)} />
+                <path className="rpb-line" data-rpb="UP_80" d={pathFromClamped(ind.rpb.up[80])} {...lineProps(upColorRpb, 0.5, 1, '4 3')} />
+                <path className="rpb-line" data-rpb="UP_75" d={pathFromClamped(ind.rpb.up[75])} {...lineProps(upColorRpb, 0.85, 2)} />
+                <path className="rpb-line" data-rpb="UP_70" d={pathFromClamped(ind.rpb.up[70])} {...lineProps(upColorRpb, 1, 1)} />
               </>
             )}
             {showDn && (
               <>
-                <path className="rpb-line" data-rpb="DN_30" d={pathFrom(ind.rpb.dn[30])} {...lineProps(dnColorRpb, 1, 1)} />
-                <path className="rpb-line" data-rpb="DN_25" d={pathFrom(ind.rpb.dn[25])} {...lineProps(dnColorRpb, 0.85, 2)} />
-                <path className="rpb-line" data-rpb="DN_20" d={pathFrom(ind.rpb.dn[20])} {...lineProps(dnColorRpb, 0.5, 1, '4 3')} />
+                <path className="rpb-line" data-rpb="DN_30" d={pathFromClamped(ind.rpb.dn[30])} {...lineProps(dnColorRpb, 1, 1)} />
+                <path className="rpb-line" data-rpb="DN_25" d={pathFromClamped(ind.rpb.dn[25])} {...lineProps(dnColorRpb, 0.85, 2)} />
+                <path className="rpb-line" data-rpb="DN_20" d={pathFromClamped(ind.rpb.dn[20])} {...lineProps(dnColorRpb, 0.5, 1, '4 3')} />
               </>
             )}
             {/* Right-edge labels (Pine 모방) */}
@@ -238,7 +253,7 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
                   key={'rpb-lbl-' + rsi_t}
                   className="rpb-label mono"
                   x={W - 4}
-                  y={yAt(v) - 2}
+                  y={Math.max(padT + 8, Math.min(padT + H - 3, yAt(v) - 2))}
                   textAnchor="end"
                   fill={color}
                   fillOpacity={op}
@@ -272,28 +287,53 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
         );
       })}
 
-      {/* Signal markers */}
-      {signalsOn && sigSlice.map((s, k) => {
-        const i = s.i - from;
-        const c = candles[s.i];
-        const dirFn = window.MarketData.helpers.signalDirection || ((kk) => (kk === 'golden_cross' || kk === 'rsi_oversold' || kk === 'macd_bull_cross' || kk === 'rsi_bull_div' ? 'buy' : 'sell'));
-        const dir = dirFn(s.kind);
-        const above = dir === 'sell';
-        const y = above ? yAt(c.h) - 14 : yAt(c.l) + 14;
-        const color = above ? downColor : upColor;
-        const labelMap = { golden_cross: 'G', death_cross: 'D', rsi_oversold: 'OS', rsi_overbought: 'OB', macd_bull_cross: 'M↑', macd_bear_cross: 'M↓', rsi_bull_div: 'D+', rsi_bear_div: 'D−' };
-        const label = labelMap[s.kind] || '?';
-        return (
-          <g key={'sig' + k}>
-            <polygon
-              points={above ? `${xAt(i)},${y + 6} ${xAt(i) - 4.5},${y - 2} ${xAt(i) + 4.5},${y - 2}` : `${xAt(i)},${y - 6} ${xAt(i) - 4.5},${y + 2} ${xAt(i) + 4.5},${y + 2}`}
-              fill={color}
-              opacity="0.9"
-            />
-            <text x={xAt(i)} y={above ? y - 6 : y + 14} fontSize="9" fontFamily="JetBrains Mono, monospace" fill={color} textAnchor="middle" fontWeight="600">{label}</text>
-          </g>
-        );
-      })}
+      {/* Signal markers — lane-stacked to avoid overlap, clamped to the pane */}
+      {signalsOn && (() => {
+        const SIG_ROW = 13;            // vertical gap between stacked markers
+        const SIG_GAP_X = cw * 1.3;    // markers closer than this in x must stack
+        const dirFn = (window.MarketData.helpers && window.MarketData.helpers.signalDirection)
+          || ((kk) => (kk === 'golden_cross' || kk === 'rsi_oversold' || kk === 'macd_bull_cross' || kk === 'rsi_bull_div' ? 'buy' : 'sell'));
+        const fitFn = (window.MarketData.helpers && window.MarketData.helpers.signalRegimeFit) || (() => 'good');
+        const labelMap = {
+          golden_cross: 'GC', death_cross: 'DC',
+          rsi_oversold: 'OS', rsi_overbought: 'OB',
+          macd_bull_cross: 'M↑', macd_bear_cross: 'M↓',
+          rsi_bull_div: 'DV↑', rsi_bear_div: 'DV↓',
+        };
+        const laneAbove = [], laneBelow = [];   // lane[k] = last x used in lane k
+        return sigSlice.map((s, k) => {
+          const i = s.i - from;
+          const c = candles[s.i];
+          const above = dirFn(s.kind) === 'sell';
+          const x = xAt(i);
+          // Pick the lowest lane whose previous marker is far enough away.
+          const lanes = above ? laneAbove : laneBelow;
+          let lane = 0;
+          while (lane < lanes.length && x - lanes[lane] < SIG_GAP_X) lane++;
+          lanes[lane] = x;
+          const off = lane * SIG_ROW;
+          let y = above ? yAt(c.h) - 14 - off : yAt(c.l) + 14 + off;
+          // Clamp so the triangle + label stay inside the pane.
+          y = above ? Math.max(y, padT + 16) : Math.min(y, padT + H - 18);
+          const color = above ? downColor : upColor;
+          const label = labelMap[s.kind] || '?';
+          // ADX regime gate — de-emphasise signals firing in an unsuitable regime.
+          const weak = fitFn(s.kind, trend[s.i]) === 'weak';
+          return (
+            <g key={'sig' + k} opacity={weak ? 0.34 : 1}>
+              <title>{(s.label || s.kind) + ' · ' + fmt.shortDate(c.t) + (weak ? ' · 국면 부적합' : '')}</title>
+              <polygon
+                points={above
+                  ? `${x},${y + 6} ${x - 4.5},${y - 2} ${x + 4.5},${y - 2}`
+                  : `${x},${y - 6} ${x - 4.5},${y + 2} ${x + 4.5},${y + 2}`}
+                fill={color}
+                opacity="0.9"
+              />
+              <text x={x} y={above ? y - 6 : y + 14} fontSize="9" fontFamily="JetBrains Mono, monospace" fill={color} textAnchor="middle" fontWeight="600">{label}</text>
+            </g>
+          );
+        });
+      })()}
 
       {/* Trade entries/exits */}
       {tradeSlice.map((tr, k) => {

@@ -622,7 +622,8 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   overflow: hidden;
 }
 .drawing-banner {
-  position: absolute; top: 8px; left: 8px;
+  position: absolute; top: 8px; left: 50%;
+  transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;
   padding: 5px 10px;
   background: oklch(0.78 0.16 75 / 0.15);
@@ -636,7 +637,7 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 }
 .drawing-banner button:hover { color: var(--text); }
 .hover-readout {
-  position: absolute; top: 8px; right: 76px;
+  position: absolute; top: 8px; left: 8px;
   display: flex; gap: 12px;
   padding: 5px 10px;
   background: oklch(0.20 0.005 240 / 0.85);
@@ -644,6 +645,31 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   font-size: 11px;
 }
 .hover-readout b { color: var(--text-dim); font-weight: 500; }
+
+/* ── Signal legend (under the candle pane, shown when markers are on) ── */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 5px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 9.5px;
+  color: var(--text-dim);
+}
+.chart-legend .cl-dir { display: inline-flex; align-items: center; gap: 4px; }
+.chart-legend .cl-tri { font-size: 8px; }
+.chart-legend .cl-tri.up { color: var(--up); }
+.chart-legend .cl-tri.down { color: var(--down); }
+.chart-legend .cl-sep { width: 1px; height: 10px; background: var(--border-strong); }
+.chart-legend .cl-item b {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-mid);
+  font-weight: 600;
+  margin-right: 3px;
+}
+.chart-legend .cl-note { opacity: 0.6; font-style: italic; }
 
 /* ── Trend timeline ─────────────────────────────────── */
 .trend-timeline {

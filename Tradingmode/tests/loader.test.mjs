@@ -28,9 +28,9 @@ function buildIndicatorPayload(candles, opts = {}) {
     'BBU_20_2.0_2.0': Array(n).fill(110),
     'BBL_20_2.0_2.0': Array(n).fill(90),
     ...(opts.includeRpb !== false ? rpb : {}),
-    // For padding test: provide a deliberately-short SMA_5 series (length 2)
+    // For padding test: provide a deliberately-short SMA_20 series (length 2)
     // so getColumn must front-pad with nulls to reach candle length.
-    ...(opts.short ? { SMA_5: [100, 100] } : {}),
+    ...(opts.short ? { SMA_20: [100, 100] } : {}),
   };
 }
 
@@ -114,17 +114,17 @@ async function testRpbNestedShape() {
 }
 
 async function testGetColumnLengthMismatchPadding() {
-  // SMA_5 has only 2 entries against 3 candles — getColumn must front-pad
+  // SMA_20 has only 2 entries against 3 candles — getColumn must front-pad
   // with nulls so indices stay aligned with candles.
   const { context, candles } = createLoaderContext({ short: true });
   const instrument = await context.window.loader.loadInstrument({
     symbol: 'BTC/USDT', market: 'crypto', name: 'Bitcoin', currency: 'USDT', exch: 'BINANCE',
   });
-  assert.equal(instrument.ind.ma5.length, candles.length, 'ma5 must be padded to candle length');
+  assert.equal(instrument.ind.ma20.length, candles.length, 'ma20 must be padded to candle length');
   // Front-pad: with 3 candles + 2-entry series, position 0 should be null,
   // positions 1 and 2 should carry the tail values.
-  assert.equal(instrument.ind.ma5[0], null, 'short series should be front-padded with nulls');
-  assert.equal(instrument.ind.ma5[candles.length - 1], 100, 'tail values preserved');
+  assert.equal(instrument.ind.ma20[0], null, 'short series should be front-padded with nulls');
+  assert.equal(instrument.ind.ma20[candles.length - 1], 100, 'tail values preserved');
 }
 
 async function testBacktestMapperEnrichesFields() {

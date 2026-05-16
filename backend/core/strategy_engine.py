@@ -379,9 +379,9 @@ def run_split(
 BUILTIN_INDICATORS: list[BuiltinIndicator] = [
     BuiltinIndicator(
         name="SMA",
-        columns=["SMA_5", "SMA_20", "SMA_60", "SMA_120"],
-        params={"periods": [5, 20, 60, 120]},
-        description="단순 이동평균 (5/20/60/120봉)",
+        columns=["SMA_20", "SMA_60", "SMA_120"],
+        params={"periods": [20, 60, 120]},
+        description="단순 이동평균 (20/60/120봉)",
         category="trend",
     ),
     BuiltinIndicator(

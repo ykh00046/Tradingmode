@@ -35,10 +35,10 @@ def test_add_sma_raises_when_too_short(short_df: pd.DataFrame) -> None:
 
 
 def test_add_sma_known_values(trending_up_df: pd.DataFrame) -> None:
-    out = indicators.add_sma(trending_up_df, periods=[5])
-    expected = trending_up_df["close"].rolling(window=5).mean()
+    out = indicators.add_sma(trending_up_df, periods=[20])
+    expected = trending_up_df["close"].rolling(window=20).mean()
     pd.testing.assert_series_equal(
-        out["SMA_5"].dropna(),
+        out["SMA_20"].dropna(),
         expected.dropna(),
         check_names=False,
         atol=1e-9,
@@ -124,7 +124,7 @@ def test_adx_higher_in_trend_than_in_chop(
 def test_compute_appends_all_columns(trending_up_df: pd.DataFrame) -> None:
     out = indicators.compute(trending_up_df)
     expected = {
-        "SMA_5", "SMA_20", "SMA_60", "SMA_120",
+        "SMA_20", "SMA_60", "SMA_120",
         "RSI_14",
         "MACD_12_26_9", "MACDs_12_26_9", "MACDh_12_26_9",
         # pandas-ta 0.4.x emits BB names with the std value duplicated

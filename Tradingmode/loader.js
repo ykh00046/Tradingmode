@@ -52,13 +52,11 @@
   }
 
   // Backend → frontend indicator object
-  function buildInd(indDict, candleCount, closes) {
+  function buildInd(indDict, candleCount) {
     var ind = {
-      ma5:   getColumn(indDict, 'SMA_5',   candleCount),
       ma20:  getColumn(indDict, 'SMA_20',  candleCount),
       ma60:  getColumn(indDict, 'SMA_60',  candleCount),
       ma120: getColumn(indDict, 'SMA_120', candleCount),
-      ema12: new Array(candleCount).fill(null),
       rsi14: getColumn(indDict, 'RSI_14', candleCount),
       macd: {
         line:   getColumn(indDict, 'MACD_12_26_9',  candleCount),
@@ -96,12 +94,6 @@
         },
       },
     };
-
-    // Compute EMA12 on the frontend — backend uses it internally for MACD only.
-    var helpers = window.MarketData && window.MarketData.helpers;
-    if (helpers && typeof helpers.ema === 'function') {
-      ind.ema12 = helpers.ema(closes, 12);
-    }
     return ind;
   }
 
@@ -249,7 +241,7 @@
 
     var candles = indResp.candles || [];
     var closes  = candles.map(function (c) { return c.c; });
-    var ind     = buildInd(indResp.indicators || {}, candles.length, closes);
+    var ind     = buildInd(indResp.indicators || {}, candles.length);
     var helpers = window.MarketData && window.MarketData.helpers;
 
     // Per-bar trend (backend only returns the latest classification).

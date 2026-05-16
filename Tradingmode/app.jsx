@@ -610,6 +610,21 @@ function ChartPage({ instrument: instrumentProp, upColor, downColor, indicators,
             </div>
           )}
         </div>
+        {signalsOn && (
+          <div className="chart-legend">
+            <span className="cl-dir"><span className="cl-tri up">▲</span>매수</span>
+            <span className="cl-dir"><span className="cl-tri down">▼</span>매도</span>
+            <span className="cl-sep" />
+            <span className="cl-item"><b>GC</b>골든크로스</span>
+            <span className="cl-item"><b>DC</b>데드크로스</span>
+            <span className="cl-item"><b>OB</b>과매수</span>
+            <span className="cl-item"><b>OS</b>과매도</span>
+            <span className="cl-item"><b>M↑/M↓</b>MACD 교차</span>
+            <span className="cl-item"><b>DV↑/DV↓</b>RSI 다이버전스</span>
+            <span className="cl-sep" />
+            <span className="cl-note">흐린 마커 = 현재 국면에 부적합 (ADX 게이트)</span>
+          </div>
+        )}
         <div className="chart-pane" style={{ height: 70 }}>
           <VolumeChart instrument={instrument} view={view} upColor={upColor} downColor={downColor} hoverIdx={hoverIdx} />
         </div>

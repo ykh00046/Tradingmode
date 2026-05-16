@@ -94,7 +94,15 @@
     const ef = ema(closes, fast);
     const es = ema(closes, slow);
     const line = closes.map((_, i) => (ef[i] != null && es[i] != null ? ef[i] - es[i] : null));
-    const sigArr = ema(line.map((v) => v ?? 0), signal).map((v, i) => (line[i] == null ? null : v));
+    // Signal = EMA of the MACD line, seeded from the first bar the line
+    // actually exists. Zero-padding the null head (the old `?? 0`) dragged the
+    // EMA seed toward 0 and biased the signal / histogram for ~25 early bars.
+    const firstValid = line.findIndex((v) => v != null);
+    const sigArr = new Array(line.length).fill(null);
+    if (firstValid >= 0) {
+      const sigCompact = ema(line.slice(firstValid), signal);
+      for (let i = 0; i < sigCompact.length; i++) sigArr[firstValid + i] = sigCompact[i];
+    }
     const hist = line.map((v, i) => (v != null && sigArr[i] != null ? v - sigArr[i] : null));
     return { line, signal: sigArr, hist };
   }
@@ -110,6 +118,90 @@
       lo[i] = mid[i] - mult * sd;
     }
     return { mid, up, lo };
+  }
+
+  // Wilder's smoothed moving average (RMA) — SMA-seeded, alpha = 1/length.
+  // Matches the smoothing used by rsi() above. Nulls treated as 0.
+  function wilderRma(arr, length) {
+    const out = new Array(arr.length).fill(null);
+    let prev = null;
+    for (let i = 0; i < arr.length; i++) {
+      const x = arr[i] == null ? 0 : arr[i];
+      if (i < length - 1) continue;
+      if (prev === null) {
+        let s = 0;
+        for (let j = i - length + 1; j <= i; j++) s += arr[j] == null ? 0 : arr[j];
+        prev = s / length;
+      } else {
+        prev = (prev * (length - 1) + x) / length;
+      }
+      out[i] = prev;
+    }
+    return out;
+  }
+
+  // RSI Price Band — Wilder RMA 역산: "다음 봉이 X로 마감하면 RSI=N" 가격.
+  // 백엔드 add_rpb 포팅 (데모 모드용). 양방향 산출, ATR×mult 거리 필터 + RS Cap.
+  // 반환 형태는 loader.js buildInd 의 nested rpb 와 동일.
+  function rpb(candles, opts) {
+    opts = opts || {};
+    const upper = opts.upper || [70, 75, 80];
+    const lower = opts.lower || [30, 25, 20];
+    const rsiLen = opts.rsiLen || 14;
+    const atrLen = opts.atrLen || 14;
+    const atrMult = opts.atrMult || 5;
+    const rsCap = (opts.rsCapRsi || 70) / (100 - (opts.rsCapRsi || 70));
+    const n = rsiLen - 1;                       // Pine 원전 표기
+    const N = candles.length;
+    const close = candles.map((c) => c.c);
+
+    const gain = new Array(N).fill(0), loss = new Array(N).fill(0);
+    for (let i = 1; i < N; i++) {
+      const ch = close[i] - close[i - 1];
+      gain[i] = Math.max(0, ch);
+      loss[i] = Math.max(0, -ch);
+    }
+    const avgGain = wilderRma(gain, rsiLen);
+    const avgLoss = wilderRma(loss, rsiLen);
+
+    const tr = new Array(N).fill(null);
+    for (let i = 0; i < N; i++) {
+      const c = candles[i];
+      tr[i] = i === 0
+        ? c.h - c.l
+        : Math.max(c.h - c.l, Math.abs(c.h - close[i - 1]), Math.abs(c.l - close[i - 1]));
+    }
+    const atr = wilderRma(tr, atrLen);
+
+    function mkBand(isUp, rsiT) {
+      const rs = rsiT / (100 - rsiT);
+      const price = new Array(N).fill(null);
+      const bars = new Array(N).fill(null);
+      for (let i = 0; i < N; i++) {
+        const g = avgGain[i], l = avgLoss[i], a = atr[i];
+        if (g == null || l == null || a == null) continue;
+        const limit = a * atrMult;
+        let p = null;
+        if (isUp) {
+          const x = n * (rs * l - g);
+          const cand = close[i] + x;
+          if (x > 0 && l > 0 && cand - close[i] <= limit) p = cand;
+        } else {
+          const gCap = Math.min(g, rsCap * l);
+          const y = n * (gCap / rs - l);
+          const cand = close[i] - y;
+          if (gCap > 0 && y > 0 && cand > 0 && close[i] - cand <= limit) p = cand;
+        }
+        price[i] = p;
+        bars[i] = p != null && a > 0 ? (p - close[i]) / a : null;
+      }
+      return { price, bars };
+    }
+
+    const up = {}, dn = {}, barsUp = {}, barsDn = {};
+    upper.forEach((t) => { const b = mkBand(true, t); up[t] = b.price; barsUp[t] = b.bars; });
+    lower.forEach((t) => { const b = mkBand(false, t); dn[t] = b.price; barsDn[t] = b.bars; });
+    return { up, dn, bars: { up: barsUp, dn: barsDn } };
   }
 
   // Trend classification: ADX-ish using MA arrangement and slope
@@ -142,14 +234,13 @@
   function buildInstrument(meta) {
     const candles = genOHLCV(meta.gen);
     const closes = candles.map((c) => c.c);
-    const ma5 = sma(closes, 5);
     const ma20 = sma(closes, 20);
     const ma60 = sma(closes, 60);
     const ma120 = sma(closes, 120);
-    const ema12 = ema(closes, 12);
     const rsi14 = rsi(closes, 14);
     const md = macd(closes);
     const bb = bbands(closes, 20, 2);
+    const rpbData = rpb(candles);
     const trend = classifyTrend(closes, ma20, ma60, ma120);
     const crosses = findCrosses(ma20, ma60);
 
@@ -244,7 +335,7 @@
       sharpe: estimateSharpe(equityCurve),
     };
 
-    return { meta, candles, ind: { ma5, ma20, ma60, ma120, ema12, rsi14, macd: md, bb }, trend, signals, crosses, trades, equity: equityCurve, stats };
+    return { meta, candles, ind: { ma20, ma60, ma120, rsi14, macd: md, bb, rpb: rpbData }, trend, signals, crosses, trades, equity: equityCurve, stats };
   }
 
   function estimateSharpe(eq) {
@@ -343,6 +434,28 @@
     return 'neutral';
   }
 
+  // Regime fit (ADX gate): trend-following signals (MA/MACD cross, divergence)
+  // need a trend; RSI overbought/oversold works in chop. The per-bar `trend`
+  // label already encodes the ADX regime (ADX<=25 -> 'side'). Returns
+  // 'good' | 'weak' so the UI can de-emphasise regime-mismatched signals.
+  function signalRegimeFit(kind, trend) {
+    const trending = trend === 'up' || trend === 'down';
+    switch (kind) {
+      case 'golden_cross':
+      case 'death_cross':
+      case 'macd_bull_cross':
+      case 'macd_bear_cross':
+      case 'rsi_bull_div':
+      case 'rsi_bear_div':
+        return trending ? 'good' : 'weak';
+      case 'rsi_overbought':
+      case 'rsi_oversold':
+        return trending ? 'weak' : 'good';
+      default:
+        return 'good';
+    }
+  }
+
   // Build a synthetic instrument for an ad-hoc symbol added at runtime (demo
   // mode). Seed + starting price are derived deterministically from the symbol
   // string so the generated chart stays stable across reloads.
@@ -368,6 +481,6 @@
     UNIVERSE,
     DATA,
     makeSyntheticInstrument,
-    helpers: { sma, ema, rsi, macd, bbands, classifyTrend, findCrosses, signalDirection, BUY_KINDS, SELL_KINDS },
+    helpers: { sma, ema, rsi, macd, bbands, classifyTrend, findCrosses, signalDirection, signalRegimeFit, BUY_KINDS, SELL_KINDS },
   };
 })();

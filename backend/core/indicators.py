@@ -17,7 +17,7 @@ from core.types.schemas import IndicatorConfig
 # Defaults
 # =============================================================================
 
-DEFAULT_SMA_PERIODS: list[int] = [5, 20, 60, 120]
+DEFAULT_SMA_PERIODS: list[int] = [20, 60, 120]
 DEFAULT_RSI_PERIOD: int = 14
 DEFAULT_MACD: tuple[int, int, int] = (12, 26, 9)
 DEFAULT_BBANDS: tuple[int, float] = (20, 2.0)
