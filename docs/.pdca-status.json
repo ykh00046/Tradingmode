@@ -328,6 +328,13 @@
       "action": "do-phase-1-bb-column-fix",
       "note": "P0-1이 발견한 BB Squeeze 버그 수정. BB 컬럼명 BBL_20_2.0_2.0/BBM/BBU의 점(.) 제거 → BBL_20/BBM_20/BBU_20. _bb_col 헬퍼가 단일 생성 지점. 9개 파일 변경(indicators.py·strategy_engine.py·ai_interpreter.py·test_indicators.py·test_ai_interpreter.py·loader.js·strategy-coach-page.jsx·loader.test.mjs + test_regression.py xfail 제거). 백엔드 174 passed(xfail→정상 통과), 프론트 loader 통과. 백엔드 재시작 후 라이브 BBL_20 emit 확인.",
       "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "do-phase-2-completed",
+      "note": "Phase 2 (P0-2 프론트엔드 스모크 테스트) 구현. Tradingmode/tests/e2e/smoke.py 신규 — Playwright, 자체 정적 서버(:5599) 스폰, 데모 모드. 5개 탭 렌더링(JS 오류 0) + 핵심 인터랙션 4종(워치리스트 종목 전환·지표 토글·인터벌 전환·신호 피드 펼치기) 검증. tests/e2e/README.md + backend/requirements-dev.txt(playwright/pytest-mock 등) 신규. 결과: 10/10 checks passed. P0(검증 기반) 완료 — Phase 3(P1-1 지표 골든 테스트) 남음.",
+      "phase": "do"
     }
   ]
 }

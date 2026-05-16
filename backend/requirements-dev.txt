@@ -1,0 +1,12 @@
+# Development / test-only dependencies — NOT needed for production runtime.
+#
+#   pip install -r backend/requirements-dev.txt
+#
+# Backend tests:        cd backend && pytest -q
+# Frontend smoke test:  playwright install chromium   (one-time)
+#                       cd Tradingmode && python tests/e2e/smoke.py
+
+pytest>=8.0
+pytest-mock>=3.12
+pytest-asyncio>=0.23
+playwright>=1.40
