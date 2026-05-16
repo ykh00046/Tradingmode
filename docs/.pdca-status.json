@@ -1,9 +1,17 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-05-16T00:00:00.000Z",
-  "activeFeatures": [],
-  "primaryFeature": null,
+  "lastUpdated": "2026-05-17T00:00:00.000Z",
+  "activeFeatures": ["build-pipeline"],
+  "primaryFeature": "build-pipeline",
   "features": {
+    "build-pipeline": {
+      "phase": "plan",
+      "level": "Dynamic",
+      "createdAt": "2026-05-17",
+      "documents": {
+        "plan": "docs/01-plan/features/build-pipeline.plan.md"
+      }
+    },
     "improvement-plan": {
       "phase": "archived",
       "level": "Dynamic",
@@ -382,6 +390,13 @@
       "action": "archived",
       "note": "4개 PDCA 문서를 docs/archive/2026-05/improvement-plan/ 으로 이동(plan/design/analysis/report). _INDEX.md 갱신 — Archived Features에 #4 improvement-plan 추가, 학습 효과 표 6 사이클로 확장, v0.10 잠언('테스트 통과 != 기능 동작'). activeFeatures 비움, primaryFeature null. 검증 레이어(P0+P1) + P2 4종 + OBV, 99% match. v0.4~v0.10 6 사이클 누적.",
       "phase": "archived"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "plan-created",
+      "note": "신규 사이클(v0.11.0): improvement-plan P1-2(빌드 파이프라인)를 별도 사이클로 분리. 문제 — 프론트엔드가 빌드 단계 없이 브라우저 내 @babel/standalone로 매 로드마다 ~4,240줄 JSX 재변환(콘솔 경고·첫 페인트 지연·dev React 배포). 8 FR — package.json+lockfile, JSX 사전 컴파일, @babel/standalone+text/babel 제거, React production, npm run build/dev, 스모크 테스트를 산출물 대상으로, 캐시 무효화. 접근: esbuild A-최소(파일 단위 JSX 변환, 전역 스코프·로드 순서 유지, 소스 변경 0) 권장 — Vite/ESM 리팩터는 후속. 제약 — 컴포넌트가 import 없이 공유 전역 스코프로 교차 참조, 11 스크립트 로드 순서 의존. 규모 작음~중 ~2h, 백엔드 무영향.",
+      "phase": "plan"
     }
   ]
 }
