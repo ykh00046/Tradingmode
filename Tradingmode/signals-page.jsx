@@ -196,10 +196,18 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
           <div className="panel-header"><span className="panel-title">종목별 신호 히트맵</span></div>
           <div className="hm-rows">
             {universe.map((u) => {
-              const ent = bySymbol[u.symbol];
-              const buy = ent.signals.filter((s) => dirOf(s.kind) === 'buy').length;
-              const sell = ent.signals.length - buy;
-              const total = buy + sell;
+              const sigs = bySymbol[u.symbol].signals;
+              // Split by direction × regime fit. The bar shows strong (regime-
+              // appropriate) signals solid and weak (counter-trend / chop)
+              // signals faded — so a rising stock is not misread as "sell-heavy"
+              // when its sells are just counter-trend pullbacks.
+              const buyG = sigs.filter((s) => dirOf(s.kind) === 'buy' && !s.weak).length;
+              const buyW = sigs.filter((s) => dirOf(s.kind) === 'buy' && s.weak).length;
+              const sellG = sigs.filter((s) => dirOf(s.kind) === 'sell' && !s.weak).length;
+              const sellW = sigs.length - buyG - buyW - sellG;
+              const total = sigs.length;
+              const pct = (n) => (total ? (n / total) * 100 + '%' : '0%');
+              const weakN = buyW + sellW;
               return (
                 <button
                   key={u.symbol}
@@ -211,14 +219,17 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
                     <span className="mono hm-code">{u.symbol}</span>
                     <span className="hm-name">{u.name}</span>
                   </div>
-                  <div className="hm-bar">
-                    <div className="hm-buy" style={{ width: total ? (buy / Math.max(total, 1)) * 100 + '%' : '0%' }} title={buy + '건 매수'} />
-                    <div className="hm-sell" style={{ width: total ? (sell / Math.max(total, 1)) * 100 + '%' : '0%' }} title={sell + '건 매도'} />
+                  <div className="hm-bar" title={`강한 신호 — 매수 ${buyG} / 매도 ${sellG} · 국면 부적합 ${weakN}`}>
+                    <div className="hm-buy" style={{ width: pct(buyG) }} />
+                    <div className="hm-buy hm-weak" style={{ width: pct(buyW) }} />
+                    <div className="hm-sell hm-weak" style={{ width: pct(sellW) }} />
+                    <div className="hm-sell" style={{ width: pct(sellG) }} />
                   </div>
                   <div className="hm-counts mono">
-                    <span className="up">{buy}</span>
+                    <span className="up">{buyG}</span>
                     <span className="muted">/</span>
-                    <span className="down">{sell}</span>
+                    <span className="down">{sellG}</span>
+                    {weakN > 0 && <span className="hm-weak-count" title="국면 부적합 (약한) 신호 수">약{weakN}</span>}
                   </div>
                 </button>
               );

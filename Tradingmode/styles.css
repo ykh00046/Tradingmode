@@ -1045,7 +1045,11 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .hm-bar { display: flex; height: 8px; background: var(--bg); border: 1px solid var(--border); }
 .hm-buy { background: var(--up); }
 .hm-sell { background: var(--down); }
-.hm-counts { display: flex; gap: 3px; font-size: 11px; justify-content: flex-end; }
+/* Regime-mismatched (counter-trend / chop) signals — faded so they don't
+   visually dominate the bar. */
+.hm-buy.hm-weak, .hm-sell.hm-weak { opacity: 0.28; }
+.hm-counts { display: flex; gap: 3px; font-size: 11px; justify-content: flex-end; align-items: baseline; }
+.hm-weak-count { font-size: 9px; color: var(--text-dim); margin-left: 2px; }
 
 .sp-feed { display: flex; flex-direction: column; }
 .feed-table { padding: 0 12px 12px; }

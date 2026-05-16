@@ -440,20 +440,20 @@
   // 'good' | 'weak' so the UI can de-emphasise regime-mismatched signals.
   function signalRegimeFit(kind, trend) {
     const trending = trend === 'up' || trend === 'down';
-    switch (kind) {
-      case 'golden_cross':
-      case 'death_cross':
-      case 'macd_bull_cross':
-      case 'macd_bear_cross':
-      case 'rsi_bull_div':
-      case 'rsi_bear_div':
-        return trending ? 'good' : 'weak';
-      case 'rsi_overbought':
-      case 'rsi_oversold':
-        return trending ? 'weak' : 'good';
-      default:
-        return 'good';
+    // RSI overbought/oversold — a bounded oscillator: reliable in a sideways
+    // market, unreliable in a trend (it stays pinned at the extreme).
+    if (kind === 'rsi_overbought' || kind === 'rsi_oversold') {
+      return trending ? 'weak' : 'good';
     }
+    // Every other signal is directional (MA / MACD crosses, RSI divergence).
+    // In a directionless market they whipsaw. In a trend they are trustworthy
+    // only when the signal agrees with the trend direction — a counter-trend
+    // signal (a sell inside a strong uptrend, including a bear divergence) is
+    // usually a pullback or a premature top-call, not a reversal.
+    if (!trending) return 'weak';
+    const withTrend = (trend === 'up' && signalDirection(kind) === 'buy')
+                   || (trend === 'down' && signalDirection(kind) === 'sell');
+    return withTrend ? 'good' : 'weak';
   }
 
   // Build a synthetic instrument for an ad-hoc symbol added at runtime (demo
