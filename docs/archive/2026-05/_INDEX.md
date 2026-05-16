@@ -6,6 +6,46 @@
 
 ## 📦 Archived Features
 
+### 4. improvement-plan (v0.10.0)
+
+| 항목 | 값 |
+|---|---|
+| **종료일** | 2026-05-16 |
+| **최종 Match Rate** | **99%** (Critical/High/Medium 0건) |
+| **Iterations** | 0 (99% ≥ 90%, iterate 불필요) |
+| **상태** | completed → archived |
+| **GitHub** | https://github.com/ykh00046/Tradingmode |
+| **사이클 크기** | 검증 사이클 (P0+P1 검증 레이어 + P2 4종 + OBV) |
+
+**한 줄 요약**: 기능 사이클이 아닌 **검증 레이어 구축** 사이클. 객관 코드 리뷰에서 드러난 "테스트 통과 ≠ 기능 동작" 격차를 메움. P0-1 백엔드 통합/회귀 테스트(`test_regression.py` R-1~R-5), P0-2 프론트 스모크(`smoke.py`, 5탭+인터랙션 4종), P1-1 지표 골든 스냅샷(`indicators.test.mjs`). P2 기능 개선 4종(컨플루언스 점수·밴드 상호배타 토글·정밀 패닝·AI 키 안내) + 거래량 지표 OBV. P0-1 회귀 스위트가 첫 구현에서 BB 점-컬럼명 버그(6번째 깨진 빌트인)를 발견·수정.
+
+**보관 문서** (`./improvement-plan/`)
+
+| 문서 | 설명 |
+|------|------|
+| [improvement-plan.plan.md](improvement-plan/improvement-plan.plan.md) | Plan — 객관 리뷰 기반 P0/P1/P2 로드맵 |
+| [improvement-plan.design.md](improvement-plan/improvement-plan.design.md) | Design v0.3 — 검증 v0.2(F1~F7) + Phase 3 §5.2 교정 |
+| [improvement-plan.analysis.md](improvement-plan/improvement-plan.analysis.md) | Gap v1.1 — 99% match, Critical/High/Medium 0 |
+| [improvement-plan.report.md](improvement-plan/improvement-plan.report.md) | 통합 완료 보고서 |
+
+**핵심 결과**
+
+- 백엔드 pytest 165 → **175 passed** (신규 R-1~R-5 회귀 + `test_add_obv`)
+- 프론트 `node --test` 2/2 (loader + indicators 골든) · 스모크 10/10 (5탭 × JS 오류 0)
+- 신규 테스트 자산: `test_regression.py`, `test_data_loader.py` R-3, `tests/e2e/smoke.py`, `tests/indicators.test.mjs` + `indicator-golden.json`, `backend/requirements-dev.txt`
+- BB 컬럼 dot-free 리네임(`BBL_20_2.0_2.0`→`BBL_20`) — DSL 파싱 불능 버그 해소, 9개 파일
+- OBV 신규 — `add_obv` + 거래량 패널 오버레이 + DSL 카탈로그
+
+**Decisions / Lessons worth remembering**
+
+1. **"테스트 통과 ≠ 기능 동작"** — 이 사이클의 전제. P0-1이 첫날 BB 버그 발견으로 실증.
+2. **대표 입력으로 검증** — `and`/`or` 버그가 샌 이유는 기존 API 테스트가 단일 조건만 씀. 회귀 테스트는 빌트인 5종 *실제* 식을 parametrize.
+3. **설계는 구현이 교정한다** — Design v0.2(F1~F7 검증), v0.3(§5.2 backend-parity 폐기).
+4. **data.js 자체 골든 스냅샷** — 백엔드와 시드 컨벤션이 달라 parity 불가 → 자체 스냅샷.
+5. **P1-2 빌드 파이프라인은 별도 사이클** — 아키텍처 변경은 독립 plan/design 필요.
+
+---
+
 ### 3. longer-intervals (v0.8.0)
 
 | 항목 | 값 |
@@ -147,7 +187,7 @@
 
 ---
 
-## 📊 학습 효과 정량화 (전체 5 사이클 누적)
+## 📊 학습 효과 정량화 (전체 6 사이클 누적)
 
 | 사이클 | Design 첫 검증 | Design 보강 후 | 구현 매치율 | Iterate | 비고 |
 |--------|---------------:|---------------:|------------:|:-------:|------|
@@ -155,7 +195,8 @@
 | v0.5.0 ai-strategy-coach | 84% | 92% | 97% | 0회 | DSL + AI 코치 |
 | v0.6.0 rsi-price-bands | 91% | 95% | 98% | 0회 | Pine Script 채택 |
 | v0.7.0 ux-improvements | 78% | 96% | 96% | 0회 | 첫 100% Frontend |
-| **v0.8.0 longer-intervals** | **92%** | **96%** | **99%** | **1회 (manual)** | **주/월봉 + KR resample** |
+| v0.8.0 longer-intervals | 92% | 96% | 99% | 1회 (manual) | 주/월봉 + KR resample |
+| **v0.10.0 improvement-plan** | **~80%** | **—** | **99%** | **0회** | **검증 레이어(P0+P1) + P2 4종 + OBV** |
 
 **관찰**:
 - v0.8 첫 검증 92% — v0.7 78% 대비 **+14pt 회복**. v0.7 lesson #1 ("design 작성 전 grep") 효과 입증. 5 사이클 중 두 번째로 높은 첫 검증 점수 (v0.6 91% 다음).
@@ -171,6 +212,7 @@
 - **v0.6**: Pine Script 같은 검증된 외부 알고리즘 채택은 raw 알고리즘 작성보다 안전
 - **v0.7**: Design 작성 전 코드 grep 필수 (`.cp-*` 같은 가공 클래스 0건)
 - **v0.8**: Backend → Frontend 에러 매핑은 feature 가 아닌 reusable 인프라
+- **v0.10**: 테스트 통과 ≠ 기능 동작 — 대표 입력으로 실사용 경로를 검증해야 한다
 
 ---
 

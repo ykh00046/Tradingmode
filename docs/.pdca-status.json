@@ -1,18 +1,21 @@
 {
   "version": "2.0",
   "lastUpdated": "2026-05-16T00:00:00.000Z",
-  "activeFeatures": ["improvement-plan"],
-  "primaryFeature": "improvement-plan",
+  "activeFeatures": [],
+  "primaryFeature": null,
   "features": {
     "improvement-plan": {
-      "phase": "check",
+      "phase": "archived",
       "level": "Dynamic",
       "createdAt": "2026-05-16",
+      "archivedAt": "2026-05-16",
+      "archivedTo": "docs/archive/2026-05/improvement-plan/",
       "matchRate": 99,
       "documents": {
-        "plan": "docs/improvement-plan.md",
-        "design": "docs/02-design/features/improvement-plan.design.md",
-        "analysis": "docs/03-analysis/improvement-plan.analysis.md"
+        "plan": "docs/archive/2026-05/improvement-plan/improvement-plan.plan.md",
+        "design": "docs/archive/2026-05/improvement-plan/improvement-plan.design.md",
+        "analysis": "docs/archive/2026-05/improvement-plan/improvement-plan.analysis.md",
+        "report": "docs/archive/2026-05/improvement-plan/improvement-plan.report.md"
       }
     },
     "longer-intervals": {
@@ -365,6 +368,20 @@
       "action": "post-analyze-followup",
       "note": "갭 분석 미구현 2건 후속 처리. L-1 P2-3(거래량 OBV) 구현 — add_obv(indicators.py) + compute 연결 + BUILTIN_INDICATORS 카탈로그(category volume) + _INDICATOR_PREFIXES + test_add_obv / data.js obv + loader.js 매핑 + charts.jsx 거래량 패널 OBV 오버레이 + indicators.test.mjs 골든 재생성. backend 175 passed, node --test 2, smoke 10/10. L-2 P1-2(빌드 파이프라인)는 사용자 결정으로 별도 PDCA 사이클 분리(설계 §6 권고 일치). 분석 문서 v1.1, matchRate 98→99.",
       "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "report-generated",
+      "note": "완료 보고서 생성 (docs/04-report/improvement-plan.report.md). Plan/Design v0.3/Do Phase 1~4/Check 통합 — Executive Summary + Cycle Timeline + Deliverables + Bugs Found(BB 점-컬럼명) + Decisions + Quality Metrics(99%, backend 175/smoke 10/node 2) + Process Lessons + 로드맵(P1-2 별도 사이클). 검증 레이어(P0+P1) 구축 + P2 4종 + OBV. 사이클 완료.",
+      "phase": "completed"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "archived",
+      "note": "4개 PDCA 문서를 docs/archive/2026-05/improvement-plan/ 으로 이동(plan/design/analysis/report). _INDEX.md 갱신 — Archived Features에 #4 improvement-plan 추가, 학습 효과 표 6 사이클로 확장, v0.10 잠언('테스트 통과 != 기능 동작'). activeFeatures 비움, primaryFeature null. 검증 레이어(P0+P1) + P2 4종 + OBV, 99% match. v0.4~v0.10 6 사이클 누적.",
+      "phase": "archived"
     }
   ]
 }
