@@ -1,7 +1,10 @@
 // Chart primitives — pure SVG candle/line plots tuned for dense data.
 // Receives already-built data from MarketData. Coordinates are computed once per render.
 
-const { useMemo, useState, useRef, useEffect, useCallback } = React;
+// `var` (not const): app.jsx declares the same React-hook names at the top
+// level. Loaded as separate scripts they share the global scope, where a
+// `const` redeclaration is a SyntaxError but `var` is legal (same value).
+var { useMemo, useState, useRef, useEffect, useCallback } = React;
 
 // ─── Format helpers ─────────────────────────────────────────
 const fmt = {

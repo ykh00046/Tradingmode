@@ -5,11 +5,12 @@
   "primaryFeature": "build-pipeline",
   "features": {
     "build-pipeline": {
-      "phase": "plan",
+      "phase": "do",
       "level": "Dynamic",
       "createdAt": "2026-05-17",
       "documents": {
-        "plan": "docs/01-plan/features/build-pipeline.plan.md"
+        "plan": "docs/01-plan/features/build-pipeline.plan.md",
+        "design": "docs/02-design/features/build-pipeline.design.md"
       }
     },
     "improvement-plan": {
@@ -397,6 +398,27 @@
       "action": "plan-created",
       "note": "신규 사이클(v0.11.0): improvement-plan P1-2(빌드 파이프라인)를 별도 사이클로 분리. 문제 — 프론트엔드가 빌드 단계 없이 브라우저 내 @babel/standalone로 매 로드마다 ~4,240줄 JSX 재변환(콘솔 경고·첫 페인트 지연·dev React 배포). 8 FR — package.json+lockfile, JSX 사전 컴파일, @babel/standalone+text/babel 제거, React production, npm run build/dev, 스모크 테스트를 산출물 대상으로, 캐시 무효화. 접근: esbuild A-최소(파일 단위 JSX 변환, 전역 스코프·로드 순서 유지, 소스 변경 0) 권장 — Vite/ESM 리팩터는 후속. 제약 — 컴포넌트가 import 없이 공유 전역 스코프로 교차 참조, 11 스크립트 로드 순서 의존. 규모 작음~중 ~2h, 백엔드 무영향.",
       "phase": "plan"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "design-created",
+      "note": "Design v0.1 — esbuild A-최소 확정. 환경 검증: Node v22.20.0/npm 10.9.3, index.html CRLF, 11 스크립트 로드 순서, 6 JSX 전부 React 전역 참조·import 0건, smoke.py cwd 한 곳이 서빙 디렉터리. 핵심: esbuild는 --bundle 없이도 파일 단위 트랜스폼 → 전역 스코프·로드 순서 보존, 소스 무변경. build.mjs(ESM, --dev 분기) — esbuild 10 엔트리 outdir=build outbase=ROOT, jsx:transform(classic, React 전역), copyStatic(node_modules UMD→build/vendor/), genIndexHtml(5개 문자열 치환). D3 minifyIdentifiers:false로 전역 교차참조(C-1) 보호 — whitespace/syntax만 미니파이. D4 React npm 설치 후 UMD prod를 vendor 복사(SRI 불요·동일출처·lockfile 재현성). D5 build/ gitignore→?v= churn 0. D6 BUILD_ID(timestamp base36) 쿼리. D8 smoke.py가 npm run build 선행+build/ 서빙. 10 설계결정·8 FR 매핑·7 테스트케이스(T-01~07)·Phase A/B/C. 규모 ~2h.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "design-validator-fixes-v0.2",
+      "note": "설계 검증 — 코드 사실 대조. F1 T-04가 'smoke console 캡처' 전제했으나 smoke.py엔 pageerror 리스너만(L81) → T-04를 T-02에 의한 구조적 보장으로 재정의(@babel/standalone 제거 시 경고 발생 불가). F2 import.meta.dirname(Node≥20.11) v22.20에서 string 반환 실측 확인. F3 §7 코드가 shutil 사용하나 smoke.py 미import → import shutil 추가 명시. F4 node_modules/react/umd/ 경로 — 현 index.html의 react@18.3.1/umd 사용으로 보장 확인. F5 smoke.py가 npm run build만 실행 — node_modules gitignore라 신선한 클론서 실패 → npm install 선행 추가(R-5). 설계 v0.1→v0.2, smoke.py 수정 2곳→3곳.",
+      "phase": "design"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "do-completed",
+      "note": "Do 구현 완료 (Phase A/B/C). Phase A: Tradingmode/package.json(esbuild^0.25/react/react-dom devDeps, type:module, build/dev 스크립트) + npm install(package-lock.json, esbuild 0.25.12) + build.mjs(ESM, --dev 분기, esbuild 10 엔트리 비번들 파일단위 변환, copyStatic, genIndexHtml 5치환). .gitignore는 신규 불요 — 루트 .gitignore가 node_modules/·build/ 이미 포함. Phase B: copyStatic이 node_modules UMD를 build/vendor/로 복사, genIndexHtml이 @babel/standalone·text/babel 제거+React prod+?v=BUILD_ID. T-01 build/ 14파일 생성 / T-02 babel 0건·vendor 참조 확인. Phase C: --dev watch+serve(:5173, react.development 변형, touch 시 재컴파일 [watch] 확인=T-06) + smoke.py 3곳 수정(import shutil, npm install+build 선행, http.server cwd→build/). **v0.3 발견**: 첫 스모크서 'useState already declared' — 원본은 @babel/standalone의 ES5 다운컴파일(const→var) 덕에 우연히 동작. app.jsx·charts.jsx 둘 다 최상위 const{useState,...}=React 선언, 별도 스크립트 전역스코프서 const 재선언=SyntaxError. esbuild는 const→var 미지원(supported:const-and-let=false 시도 실패, target:es5는 async 미강등 불가). 최상위 어휘선언 전수조사 — 충돌은 charts∩app 훅 5개뿐(평문JS 4개 IIFE라 0, 페이지 3개 별칭). 조치(D11): charts.jsx:4·app.jsx:4 const→var(각 1줄+주석). 설계 v0.3 §13 기록, D10 '거의 무변경'. 결과: 스모크 12/12, page error 0·console warning 0(Babel 경고 소멸=T-04). subprocess UTF-8 인코딩 보정(esbuild ⚡/→ 출력 cp949 디코드 에러).",
+      "phase": "do"
     }
   ]
 }

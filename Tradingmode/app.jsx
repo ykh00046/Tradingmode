@@ -1,7 +1,10 @@
 // Trading workspace — Chart Analysis + Backtesting
 // Single-page app with two main tabs and a shared watchlist sidebar.
 
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+// `var` (not const): charts.jsx declares the same React-hook names at the top
+// level. Loaded as separate scripts they share the global scope, where a
+// `const` redeclaration is a SyntaxError but `var` is legal (same value).
+var { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "upDownConvention": "western"

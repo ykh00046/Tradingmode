@@ -1,0 +1,16 @@
+{
+  "name": "tradingmode-frontend",
+  "private": true,
+  "version": "0.11.0",
+  "type": "module",
+  "description": "Frontend build pipeline — esbuild pre-compiles JSX so the browser no longer transpiles via @babel/standalone.",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

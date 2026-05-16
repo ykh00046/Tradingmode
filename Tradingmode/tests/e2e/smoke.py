@@ -1,20 +1,26 @@
 """P0-2 frontend smoke test (Playwright).
 
-Loads the app in demo mode and verifies every tab renders with zero
-uncaught JS errors, plus four core interactions. Self-contained — spawns
-its own static server on a dedicated port, so it never collides with a
-dev server already on :5500.
+Builds the frontend (npm install + npm run build), then loads the build
+output in demo mode and verifies every tab renders with zero uncaught JS
+errors, plus four core interactions. Self-contained — runs the build and
+spawns its own static server on a dedicated port, so it never collides
+with a dev server already on :5500.
+
+Testing the build output (not the source) means a broken build pipeline
+also fails the smoke test (build-pipeline cycle, FR-07).
 
 Run:      python tests/e2e/smoke.py      (from the Tradingmode/ dir)
 Prereq:   pip install -r ../backend/requirements-dev.txt
           playwright install chromium
+          Node.js + npm on PATH
 
 Exit code: 0 = all checks pass, 1 = any failure.
-See docs/02-design/features/improvement-plan.design.md  §4 (P0-2).
+See docs/02-design/features/build-pipeline.design.md  §7 (FR-07).
 """
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import time
@@ -30,6 +36,7 @@ except Exception:
 from playwright.sync_api import sync_playwright
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2]   # .../Tradingmode (frontend)
+BUILD_DIR = FRONTEND_DIR / "build"                   # esbuild output (served)
 PORT = 5599
 BASE = f"http://localhost:{PORT}"
 
@@ -63,9 +70,26 @@ def _wait_server(url: str, timeout: float = 15.0) -> bool:
 
 
 def run() -> int:
+    # --- build the frontend, then smoke-test the build output (FR-07) ---
+    npm = shutil.which("npm") or "npm"
+    npm_steps = [
+        (["install", "--no-audit", "--no-fund"], "npm install"),
+        (["run", "build"], "npm run build"),
+    ]
+    for args, label in npm_steps:
+        r = subprocess.run(
+            [npm, *args], cwd=str(FRONTEND_DIR),
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace",   # esbuild prints non-cp949 chars
+        )
+        if r.returncode != 0:
+            check(label, False, (r.stderr or r.stdout).strip()[-200:])
+            return 1
+        check(label, True)
+
     server = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(PORT)],
-        cwd=str(FRONTEND_DIR),
+        cwd=str(BUILD_DIR),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
