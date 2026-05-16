@@ -120,6 +120,16 @@
     return { mid, up, lo };
   }
 
+  // On-Balance Volume — cumulative volume signed by close direction.
+  function obv(candles) {
+    const out = new Array(candles.length).fill(0);
+    for (let i = 1; i < candles.length; i++) {
+      const d = candles[i].c - candles[i - 1].c;
+      out[i] = out[i - 1] + (d > 0 ? candles[i].v : d < 0 ? -candles[i].v : 0);
+    }
+    return out;
+  }
+
   // Wilder's smoothed moving average (RMA) — SMA-seeded, alpha = 1/length.
   // Matches the smoothing used by rsi() above. Nulls treated as 0.
   function wilderRma(arr, length) {
@@ -240,6 +250,7 @@
     const rsi14 = rsi(closes, 14);
     const md = macd(closes);
     const bb = bbands(closes, 20, 2);
+    const obvArr = obv(candles);
     const rpbData = rpb(candles);
     const trend = classifyTrend(closes, ma20, ma60, ma120);
     const crosses = findCrosses(ma20, ma60);
@@ -335,7 +346,7 @@
       sharpe: estimateSharpe(equityCurve),
     };
 
-    return { meta, candles, ind: { ma20, ma60, ma120, rsi14, macd: md, bb, rpb: rpbData }, trend, signals, crosses, trades, equity: equityCurve, stats };
+    return { meta, candles, ind: { ma20, ma60, ma120, rsi14, macd: md, bb, obv: obvArr, rpb: rpbData }, trend, signals, crosses, trades, equity: equityCurve, stats };
   }
 
   function estimateSharpe(eq) {
@@ -456,6 +467,22 @@
     return withTrend ? 'good' : 'weak';
   }
 
+  // Confluence score (0-3): how many of trend / momentum / volatility agree
+  // with the signal direction at bar i. Surfaced in the chart marker tooltip
+  // so the user can gauge how well-supported a signal is.
+  function signalConfluence(kind, ind, i, candles) {
+    const buy = signalDirection(kind) === 'buy';
+    let score = 0;
+    const ma20 = ind.ma20[i], ma60 = ind.ma60[i];          // 추세
+    if (ma20 != null && ma60 != null && (buy ? ma20 > ma60 : ma20 < ma60)) score++;
+    const ml = ind.macd.line[i], ms = ind.macd.signal[i];   // 모멘텀
+    if (ml != null && ms != null && (buy ? ml > ms : ml < ms)) score++;
+    const mid = ind.bb && ind.bb.mid[i];                    // 변동성
+    const c = candles[i] && candles[i].c;
+    if (mid != null && c != null && (buy ? c < mid : c > mid)) score++;
+    return score;
+  }
+
   // Build a synthetic instrument for an ad-hoc symbol added at runtime (demo
   // mode). Seed + starting price are derived deterministically from the symbol
   // string so the generated chart stays stable across reloads.
@@ -481,6 +508,6 @@
     UNIVERSE,
     DATA,
     makeSyntheticInstrument,
-    helpers: { sma, ema, rsi, macd, bbands, rpb, wilderRma, classifyTrend, findCrosses, signalDirection, signalRegimeFit, BUY_KINDS, SELL_KINDS },
+    helpers: { sma, ema, rsi, macd, bbands, obv, rpb, wilderRma, classifyTrend, findCrosses, signalDirection, signalRegimeFit, signalConfluence, BUY_KINDS, SELL_KINDS },
   };
 })();

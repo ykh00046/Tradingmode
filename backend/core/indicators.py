@@ -277,6 +277,21 @@ def add_rpb(
     return out
 
 
+def add_obv(df: pd.DataFrame) -> pd.DataFrame:
+    """Append On-Balance Volume — cumulative volume signed by close direction.
+
+    ``OBV[i] = OBV[i-1] ± volume[i]`` per close direction. A volume-based
+    confirmation axis, independent of the price-derived indicators.
+    """
+    out = df.copy()
+    _ensure_min_length(out, 2, "OBV")
+    direction = out["close"].diff()
+    up = out["volume"].where(direction > 0, 0.0)
+    down = out["volume"].where(direction < 0, 0.0)
+    out["OBV"] = (up - down).cumsum()
+    return out
+
+
 # =============================================================================
 # Bulk computation
 # =============================================================================
@@ -312,4 +327,6 @@ def compute(df: pd.DataFrame, config: IndicatorConfig | None = None) -> pd.DataF
             rsi_length=cfg.get("rsi_period", DEFAULT_RSI_PERIOD),
             atr_length=cfg.get("rpb_atr_length", DEFAULT_RPB_ATR_LENGTH),
         )
+
+    out = add_obv(out)
     return out

@@ -294,6 +294,7 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
         const dirFn = (window.MarketData.helpers && window.MarketData.helpers.signalDirection)
           || ((kk) => (kk === 'golden_cross' || kk === 'rsi_oversold' || kk === 'macd_bull_cross' || kk === 'rsi_bull_div' ? 'buy' : 'sell'));
         const fitFn = (window.MarketData.helpers && window.MarketData.helpers.signalRegimeFit) || (() => 'good');
+        const confFn = window.MarketData.helpers && window.MarketData.helpers.signalConfluence;
         const labelMap = {
           golden_cross: 'GC', death_cross: 'DC',
           rsi_oversold: 'OS', rsi_overbought: 'OB',
@@ -321,7 +322,9 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
           const weak = fitFn(s.kind, trend[s.i]) === 'weak';
           return (
             <g key={'sig' + k} opacity={weak ? 0.34 : 1}>
-              <title>{(s.label || s.kind) + ' · ' + fmt.shortDate(c.t) + (weak ? ' · 국면 부적합' : '')}</title>
+              <title>{(s.label || s.kind) + ' · ' + fmt.shortDate(c.t)
+                + (confFn ? ' · 동의 ' + confFn(s.kind, ind, s.i, candles) + '/3' : '')
+                + (weak ? ' · 국면 부적합' : '')}</title>
               <polygon
                 points={above
                   ? `${x},${y + 6} ${x - 4.5},${y - 2} ${x + 4.5},${y - 2}`
@@ -423,12 +426,26 @@ function CandleChart({ instrument, view, hoverIdx, setHoverIdx, indicators, sign
 
 // ─── Volume bars ──────────────────────────────────────────────
 function VolumeChart({ instrument, view, upColor, downColor, hoverIdx }) {
-  const { candles } = instrument;
+  const { candles, ind } = instrument;
   const width = 1100, height = 70, padL = 8, padR = 64, padT = 4, padB = 4;
   const slice = candles.slice(view[0], view[1]);
   const max = Math.max(...slice.map((c) => c.v));
   const W = width - padL - padR, H = height - padT - padB;
   const cw = W / slice.length;
+  // OBV overlay — cumulative volume line, normalised to the panel height.
+  const obvSlice = (ind && ind.obv) ? ind.obv.slice(view[0], view[1]) : [];
+  const obvNums = obvSlice.filter((v) => v != null);
+  let obvPath = '';
+  if (obvNums.length > 1) {
+    const oMin = Math.min(...obvNums);
+    const oRange = (Math.max(...obvNums) - oMin) || 1;
+    obvSlice.forEach((v, i) => {
+      if (v == null) return;
+      const x = padL + (i + 0.5) * cw;
+      const y = padT + H - ((v - oMin) / oRange) * H;
+      obvPath += (obvPath ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    });
+  }
   return (
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
       {slice.map((c, i) => {
@@ -438,7 +455,9 @@ function VolumeChart({ instrument, view, upColor, downColor, hoverIdx }) {
         const bw = cw * 0.7;
         return <rect key={i} x={x} y={padT + H - h} width={bw} height={h} fill={up ? upColor : downColor} opacity="0.6" />;
       })}
+      {obvPath && <path d={obvPath} fill="none" stroke="oklch(0.75 0.12 215)" strokeWidth="1" />}
       <text x={width - padR + 4} y={padT + 10} fontSize="9" fontFamily="JetBrains Mono, monospace" fill="rgba(220,225,235,0.5)">VOL</text>
+      <text x={width - padR + 4} y={padT + 21} fontSize="9" fontFamily="JetBrains Mono, monospace" fill="oklch(0.75 0.12 215)">OBV</text>
       <text x={width - padR + 4} y={padT + H - 2} fontSize="9" fontFamily="JetBrains Mono, monospace" fill="rgba(220,225,235,0.5)">{fmt.vol(max)}</text>
       {hoverIdx != null && hoverIdx >= view[0] && hoverIdx < view[1] && (
         <line x1={padL + (hoverIdx - view[0] + 0.5) * cw} x2={padL + (hoverIdx - view[0] + 0.5) * cw} y1={padT} y2={padT + H} stroke="rgba(245,210,140,0.5)" strokeWidth="0.8" />

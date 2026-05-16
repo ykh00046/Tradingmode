@@ -464,6 +464,11 @@ function CoachPanel({ coach, loading, onApply, available }) {
         {coach && <span className="sc-coach-model mono muted">{coach.model}</span>}
       </div>
 
+      {window.__groqConfigured === false && (
+        <div className="ai-key-notice">
+          ⚠ GROQ_API_KEY 미설정 — AI 코치는 백엔드에 키 설정 후 사용 가능합니다.
+        </div>
+      )}
       {!available && <div className="sc-empty muted">백테스트 후 활성화</div>}
       {available && !coach && !loading && <div className="sc-empty muted">결과 패널에서 "AI 코치에게 추천 받기" 클릭</div>}
       {loading && <div className="sc-empty">분석 중…</div>}

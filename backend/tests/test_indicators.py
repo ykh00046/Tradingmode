@@ -117,6 +117,26 @@ def test_adx_higher_in_trend_than_in_chop(
 
 
 # =============================================================================
+# OBV
+# =============================================================================
+
+
+def test_add_obv_cumulative_signed_volume() -> None:
+    df = pd.DataFrame(
+        {
+            "open":   [10.0, 10.0, 10.0, 10.0],
+            "high":   [11.0, 11.0, 11.0, 11.0],
+            "low":    [9.0, 9.0, 9.0, 9.0],
+            "close":  [10.0, 11.0, 10.0, 10.0],   # flat-start, up, down, flat
+            "volume": [100.0, 200.0, 300.0, 400.0],
+        }
+    )
+    out = indicators.add_obv(df)
+    # bar0: 0 (no prior) · bar1: +200 · bar2: -300 → -100 · bar3: flat → -100
+    assert list(out["OBV"]) == [0.0, 200.0, -100.0, -100.0]
+
+
+# =============================================================================
 # Bulk compute
 # =============================================================================
 
@@ -129,6 +149,7 @@ def test_compute_appends_all_columns(trending_up_df: pd.DataFrame) -> None:
         "MACD_12_26_9", "MACDs_12_26_9", "MACDh_12_26_9",
         "BBL_20", "BBM_20", "BBU_20",
         "ADX_14", "DMP_14", "DMN_14",
+        "OBV",
     }
     assert expected.issubset(set(out.columns))
 

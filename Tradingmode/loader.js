@@ -58,6 +58,7 @@
       ma60:  getColumn(indDict, 'SMA_60',  candleCount),
       ma120: getColumn(indDict, 'SMA_120', candleCount),
       rsi14: getColumn(indDict, 'RSI_14', candleCount),
+      obv:   getColumn(indDict, 'OBV', candleCount),
       macd: {
         line:   getColumn(indDict, 'MACD_12_26_9',  candleCount),
         signal: getColumn(indDict, 'MACDs_12_26_9', candleCount),

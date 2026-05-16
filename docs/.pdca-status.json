@@ -5,12 +5,14 @@
   "primaryFeature": "improvement-plan",
   "features": {
     "improvement-plan": {
-      "phase": "do",
+      "phase": "check",
       "level": "Dynamic",
       "createdAt": "2026-05-16",
+      "matchRate": 99,
       "documents": {
         "plan": "docs/improvement-plan.md",
-        "design": "docs/02-design/features/improvement-plan.design.md"
+        "design": "docs/02-design/features/improvement-plan.design.md",
+        "analysis": "docs/03-analysis/improvement-plan.analysis.md"
       }
     },
     "longer-intervals": {
@@ -340,8 +342,29 @@
       "timestamp": "2026-05-16",
       "feature": "improvement-plan",
       "action": "do-phase-3-completed",
-      "note": "Phase 3 (P1-1 지표 골든 테스트) 구현. data.js helpers에 rpb/wilderRma export(설계 §5.2 step 0). tests/indicators.test.mjs + tests/fixtures/indicator-golden.json 신규. **설계 조정**: §5.2의 '백엔드 기준값' 전제가 구현 시 부적합 판명 — data.js와 백엔드는 EMA/Wilder 시드 컨벤션이 다름(전자 SMA 시드, 후자 pandas adjust=False)→워밍업 구간이 본질적으로 불일치, 0.1% parity 불가. 따라서 backend-parity 대신 data.js 자체 골든 스냅샷(RNG·초월함수 없는 결정적 fixture, 정확 일치)으로 구현 — data.js 지표 드리프트 회귀 가드. node --test 2 pass. P0+P1 검증 레이어 완료.",
+      "note": "Phase 3 (P1-1 지표 골든 테스트) 구현. data.js helpers에 rpb/wilderRma export(설계 §5.2 step 0). tests/indicators.test.mjs + tests/fixtures/indicator-golden.json 신규. **설계 조정**: §5.2의 '백엔드 기준값' 전제가 구현 시 부적합 판명 — data.js와 백엔드는 EMA/Wilder 시드 컨벤션이 다름(전자 SMA 시드, 후자 pandas adjust=False)→워밍업 구간이 본질적으로 불일치, 0.1% parity 불가. 따라서 backend-parity 대신 data.js 자체 골든 스냅샷(RNG·초월함수 없는 결정적 fixture, 정확 일치)으로 구현 — data.js 지표 드리프트 회귀 가드. node --test 2 pass. P0+P1 검증 레이어 완료. 설계 v0.3 반영.",
       "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "do-phase-4-completed",
+      "note": "Phase 4 (P2 기능 개선) — 사용자 선택 4개 구현. P2-1 컨플루언스 점수: signalConfluence(추세 MA·모멘텀 MACD·변동성 BB, 0~3) helper → 차트 마커 툴팁 '동의 N/3'. P2-2 밴드 상호배타: getSetter에서 볼린저밴드↔RPB 동시 ON 차단. P2-4 정밀 패닝: pan(dir,bars) 파라미터화 + 키보드 ←/→ 1봉, Shift+화살표 25%. P2-5 AI 키 안내: health의 groq_configured를 window.__groqConfigured로 노출 → 매매신호·Strategy Coach 미설정 배너. P2-3(거래량 OBV)은 미선택·보류. node --test 2 pass, smoke 10/10, P2 4종 직접 검증 통과.",
+      "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "analyze-completed",
+      "note": "갭 분석 — Design v0.3 ↔ Phase 1~4 구현. Match Rate 98%, Critical/High/Medium 0, Low 2(둘 다 의도된 보류 — P2-3 OBV 사용자 미선택, P1-2 빌드 설계상 비대상). 설계 in-scope 전부 구현·검증(backend 174 / node --test 2 / smoke 10). 설계 외 성과: BB 점-컬럼명 버그 발견·수정. docs/03-analysis/improvement-plan.analysis.md 생성. iterate 불필요(>=90%) → /pdca report 진행 가능.",
+      "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "post-analyze-followup",
+      "note": "갭 분석 미구현 2건 후속 처리. L-1 P2-3(거래량 OBV) 구현 — add_obv(indicators.py) + compute 연결 + BUILTIN_INDICATORS 카탈로그(category volume) + _INDICATOR_PREFIXES + test_add_obv / data.js obv + loader.js 매핑 + charts.jsx 거래량 패널 OBV 오버레이 + indicators.test.mjs 골든 재생성. backend 175 passed, node --test 2, smoke 10/10. L-2 P1-2(빌드 파이프라인)는 사용자 결정으로 별도 PDCA 사이클 분리(설계 §6 권고 일치). 분석 문서 v1.1, matchRate 98→99.",
+      "phase": "check"
     }
   ]
 }

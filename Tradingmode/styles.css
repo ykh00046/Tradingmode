@@ -1122,6 +1122,18 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   border-top: 1px solid var(--border);
 }
 
+/* AI key notice (P2-5) — shown when the backend has no GROQ_API_KEY. */
+.ai-key-notice {
+  margin: 8px 16px;
+  padding: 7px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: oklch(0.85 0.14 75);
+  background: oklch(0.30 0.06 75 / 0.25);
+  border: 1px solid oklch(0.55 0.12 75 / 0.5);
+  border-radius: 3px;
+}
+
 /* AI Explainer panel */
 .ai-panel {
   background: oklch(0.16 0.018 250);

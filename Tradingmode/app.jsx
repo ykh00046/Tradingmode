@@ -473,11 +473,12 @@ function ChartPage({ instrument: instrumentProp, upColor, downColor, indicators,
   const dayChg = (last.c - prev.c) / prev.c;
   const range = view[1] - view[0];
 
-  function pan(dir) {
+  function pan(dir, bars) {
     setView(([a, b]) => {
-      const step = Math.floor(range * 0.25) * dir;
-      const na = Math.max(0, Math.min(instrument.candles.length - range, a + step));
-      return [na, na + range];
+      const r = b - a;
+      const step = (bars != null ? bars : Math.floor(r * 0.25)) * dir;
+      const na = Math.max(0, Math.min(instrument.candles.length - r, a + step));
+      return [na, na + r];
     });
   }
   function zoom(dir) {
@@ -488,6 +489,19 @@ function ChartPage({ instrument: instrumentProp, upColor, downColor, indicators,
       return [na, na + newRange];
     });
   }
+
+  // P2-4 — keyboard pan: Arrow keys nudge 1 bar, Shift+Arrow pages by 25%.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      e.preventDefault();
+      pan(e.key === 'ArrowLeft' ? -1 : 1, e.shiftKey ? undefined : 1);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [instrument]);
 
   const trendCounts = useMemo(() => {
     const c = { up: 0, down: 0, side: 0 };
@@ -736,7 +750,14 @@ function RightPanel({ instrument, indicators, setIndicators, signalsOn, setSigna
   }
   function getSetter(item) {
     if (item.type === 'flat') return item.key === 'signalsOn' ? setSignalsOn : setTrendBand;
-    return (v) => setIndicators({ ...indicators, [item.key]: v });
+    return (v) => {
+      const next = { ...indicators, [item.key]: v };
+      // Bollinger Bands <-> RPB are mutually exclusive — both at once overlays
+      // 6-9 band lines (see indicator-combinations.md section 4).
+      if (v && item.key === 'rpb') next.bb = false;
+      if (v && item.key === 'bb') { next.rpb = false; next.rpbBoth = false; }
+      setIndicators(next);
+    };
   }
 
   return (
@@ -1230,7 +1251,9 @@ function App() {
       setDataState({ status: 'loading', message: '백엔드에서 데이터 수집 중…', source: 'FastAPI' });
       try {
         // Probe backend first so we fail fast with a clearer error.
-        await window.api.health({ signal: ctl.signal, timeout: 5000 });
+        const health = await window.api.health({ signal: ctl.signal, timeout: 5000 });
+        // Expose Groq availability so AI panels can warn proactively (P2-5).
+        window.__groqConfigured = !!(health && health.groq_configured);
         await window.loader.loadAllInstruments(window.MarketData.UNIVERSE, {
           signal: ctl.signal,
           onProgress: (p) => { if (alive) setLoadProgress(p); },

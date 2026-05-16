@@ -190,6 +190,13 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
         </div>
       </div>
 
+      {window.__groqConfigured === false && (
+        <div className="ai-key-notice">
+          ⚠ GROQ_API_KEY 미설정 — AI 해설은 백엔드에 키 설정 후 사용 가능합니다.
+          (console.groq.com 무료 발급)
+        </div>
+      )}
+
       <div className="sp-grid">
         {/* Left: heatmap by symbol */}
         <div className="sp-heatmap">

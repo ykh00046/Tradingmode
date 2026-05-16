@@ -456,6 +456,13 @@ BUILTIN_INDICATORS: list[BuiltinIndicator] = [
         description="추세 강도 지수 + 방향성 지표",
         category="trend",
     ),
+    BuiltinIndicator(
+        name="OBV",
+        columns=["OBV"],
+        params={},
+        description="On-Balance Volume — 종가 방향으로 부호화한 누적 거래량",
+        category="volume",
+    ),
 ]
 
 

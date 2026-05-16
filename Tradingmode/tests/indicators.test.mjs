@@ -55,6 +55,7 @@ function computeAll(h) {
     rsi14:  h.rsi(closes, 14),
     macd:   h.macd(closes),
     bbands: h.bbands(closes, 20, 2),
+    obv:    h.obv(candles),
     rpb:    h.rpb(candles),
   };
 }
@@ -62,7 +63,7 @@ function computeAll(h) {
 function main() {
   const helpers = loadHelpers();
   // §5.2 step 0 — rpb / wilderRma must be exported on helpers.
-  for (const fn of ['sma', 'ema', 'rsi', 'macd', 'bbands', 'rpb', 'wilderRma']) {
+  for (const fn of ['sma', 'ema', 'rsi', 'macd', 'bbands', 'obv', 'rpb', 'wilderRma']) {
     assert.equal(typeof helpers[fn], 'function', `helpers.${fn} must be exported`);
   }
 
