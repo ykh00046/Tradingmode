@@ -5,12 +5,16 @@
   "primaryFeature": "build-pipeline",
   "features": {
     "build-pipeline": {
-      "phase": "do",
+      "phase": "completed",
       "level": "Dynamic",
       "createdAt": "2026-05-17",
+      "matchRate": 98,
+      "iteration": 0,
       "documents": {
         "plan": "docs/01-plan/features/build-pipeline.plan.md",
-        "design": "docs/02-design/features/build-pipeline.design.md"
+        "design": "docs/02-design/features/build-pipeline.design.md",
+        "analysis": "docs/03-analysis/build-pipeline.analysis.md",
+        "report": "docs/04-report/build-pipeline.report.md"
       }
     },
     "improvement-plan": {
@@ -419,6 +423,20 @@
       "action": "do-completed",
       "note": "Do 구현 완료 (Phase A/B/C). Phase A: Tradingmode/package.json(esbuild^0.25/react/react-dom devDeps, type:module, build/dev 스크립트) + npm install(package-lock.json, esbuild 0.25.12) + build.mjs(ESM, --dev 분기, esbuild 10 엔트리 비번들 파일단위 변환, copyStatic, genIndexHtml 5치환). .gitignore는 신규 불요 — 루트 .gitignore가 node_modules/·build/ 이미 포함. Phase B: copyStatic이 node_modules UMD를 build/vendor/로 복사, genIndexHtml이 @babel/standalone·text/babel 제거+React prod+?v=BUILD_ID. T-01 build/ 14파일 생성 / T-02 babel 0건·vendor 참조 확인. Phase C: --dev watch+serve(:5173, react.development 변형, touch 시 재컴파일 [watch] 확인=T-06) + smoke.py 3곳 수정(import shutil, npm install+build 선행, http.server cwd→build/). **v0.3 발견**: 첫 스모크서 'useState already declared' — 원본은 @babel/standalone의 ES5 다운컴파일(const→var) 덕에 우연히 동작. app.jsx·charts.jsx 둘 다 최상위 const{useState,...}=React 선언, 별도 스크립트 전역스코프서 const 재선언=SyntaxError. esbuild는 const→var 미지원(supported:const-and-let=false 시도 실패, target:es5는 async 미강등 불가). 최상위 어휘선언 전수조사 — 충돌은 charts∩app 훅 5개뿐(평문JS 4개 IIFE라 0, 페이지 3개 별칭). 조치(D11): charts.jsx:4·app.jsx:4 const→var(각 1줄+주석). 설계 v0.3 §13 기록, D10 '거의 무변경'. 결과: 스모크 12/12, page error 0·console warning 0(Babel 경고 소멸=T-04). subprocess UTF-8 인코딩 보정(esbuild ⚡/→ 출력 cp949 디코드 에러).",
       "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "analyze-completed",
+      "note": "갭 분석 — Design v0.3 ↔ Do 구현. Match Rate 98%. 8 FR 전부 + 11 설계결정(D1~D11) + 7 테스트(T-01~07) 모두 충족. Critical/High/Medium 0. Low 2 — G-1 Tradingmode/.gitignore 미생성(루트 .gitignore가 node_modules/·build/ 이미 무시 → 정당한 DRY 생략, git check-ignore 확인), G-2 smoke.py subprocess UTF-8 인코딩(설계 §7 누락을 구현이 보완 — esbuild 비-cp949 출력 디코드 에러). 둘 다 조치 불요. 설계가 구현 중 v0.3 자체보정(const/var)됐기에 불일치 거의 없음. 설계 외 성과 — 원본의 잠재 const-스코프 취약점 발견·수정. docs/03-analysis/build-pipeline.analysis.md 생성. iterate 불요(98%≥90%) → /pdca report 진행 가능.",
+      "phase": "check"
+    },
+    {
+      "timestamp": "2026-05-17",
+      "feature": "build-pipeline",
+      "action": "report-generated",
+      "note": "완료 보고서 생성 (docs/04-report/build-pipeline.report.md). Plan/Design v0.3/Do/Check 통합 — Executive Summary + 사이클 타임라인 + 산출물(신규 build.mjs·package.json 등 + 수정 charts.jsx·app.jsx·smoke.py) + 8 FR 전수 + 핵심 설계결정 + §6 const 스코프 취약점 발견·수정 상세 + 품질지표(98%, 스모크 12/12, error/warning 0) + 4 프로세스 교훈 + 후속 로드맵. 교훈: '실행됨 != 견고함' — 빌드 단계 도입이 우연히 동작하던 코드를 표면화. v0.4~v0.11 누적 7 사이클, Critical/High 0건 연속. 사이클 완료.",
+      "phase": "completed"
     }
   ]
 }
