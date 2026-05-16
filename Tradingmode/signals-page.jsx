@@ -13,13 +13,20 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
 
   // Aggregate signals across universe
   const allSignals = useMemoS(() => {
+    // ADX regime gate — flag signals firing in an unsuitable market regime
+    // (consistent with the dimmed markers on the chart).
+    const fitFn = (window.MarketData.helpers && window.MarketData.helpers.signalRegimeFit) || (() => 'good');
     const out = [];
     universe.forEach((u) => {
       const d = data[u.symbol];
       const lastT = d.candles[d.candles.length - 1].t;
       d.signals.forEach((s) => {
         const ageDays = Math.round((lastT - s.t) / (24 * 3600 * 1000));
-        out.push({ ...s, symbol: u.symbol, market: u.market, name: u.name, exch: u.exch, currency: u.currency, ageDays, candle: d.candles[s.i] });
+        out.push({
+          ...s, symbol: u.symbol, market: u.market, name: u.name, exch: u.exch,
+          currency: u.currency, ageDays, candle: d.candles[s.i],
+          weak: fitFn(s.kind, d.trend[s.i]) === 'weak',
+        });
       });
     });
     return out.sort((a, b) => b.t - a.t);
@@ -241,7 +248,7 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
                 const expanded = expandedKey === k;
                 const ai = aiCache[k];
                 return (
-                  <div key={k} className={'feed-item ' + (isBuy ? 'buy' : 'sell') + (expanded ? ' expanded' : '')}>
+                  <div key={k} className={'feed-item ' + (isBuy ? 'buy' : 'sell') + (expanded ? ' expanded' : '') + (s.weak ? ' weak' : '')}>
                     <div className="feed-row" onClick={() => toggleExpand(s)} role="button">
                       <span className={'sig-badge ' + (isBuy ? 'up' : 'down')}>{isBuy ? 'BUY' : 'SELL'}</span>
                       <span className="feed-sym">
@@ -251,6 +258,9 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
                       </span>
                       <span className="feed-kind">
                         {s.label}
+                        {s.weak && (
+                          <span className="regime-tag" title="현재 시장 국면에 부적합한 신호 — 신뢰도 낮음 (ADX 게이트)">국면</span>
+                        )}
                         {aiEnabled && (
                           <span className={'ai-pill ' + (ai?.state || 'idle')} title={ai?.state === 'ready' ? 'AI 해설 준비됨' : ai?.state === 'loading' ? 'AI 해설 생성 중' : ai?.state === 'error' ? 'AI 해설 실패' : 'AI 해설 사용 가능'}>
                             {ai?.state === 'loading' ? '···' : 'AI'}
@@ -277,6 +287,9 @@ function SignalsPage({ universe, data, currentSymbol, setCurrent, upColor, downC
                   </div>
                 );
               })}
+              {filtered.length > 80 && (
+                <div className="feed-more muted">상위 80개 표시 · 전체 {filtered.length}개 — 필터로 좁혀보세요</div>
+              )}
             </div>
           </div>
         </div>
@@ -306,14 +319,11 @@ function AIExplainer({ signal, ai, aiEnabled, onRetry, onJumpChart }) {
         <div className="ai-context">
           <div className="ai-section-label">신호 컨텍스트</div>
           <div className="ai-ctx-grid">
-            <div><span className="muted">유형</span><span className="mono">{signal.kind}</span></div>
-            {/* Direction is not a backend field — derive from the signal kind
-                so the panel always shows something instead of an empty cell. */}
+            <div><span className="muted">유형</span><span className="mono">{signal.label || signal.kind}</span></div>
             {(() => {
-              const BUY_KINDS = new Set(['golden_cross','rsi_oversold','rsi_bull_div','macd_bull_cross']);
-              const direction = signal.direction || (BUY_KINDS.has(signal.kind) ? 'buy' : 'sell');
+              const dir = window.MarketData.helpers.signalDirection(signal.kind);
               return (
-                <div><span className="muted">방향</span><span className={'mono ' + (direction === 'buy' ? 'up' : 'down')}>{direction === 'buy' ? '매수' : '매도'}</span></div>
+                <div><span className="muted">방향</span><span className={'mono ' + (dir === 'buy' ? 'up' : 'down')}>{dir === 'buy' ? '매수' : '매도'}</span></div>
               );
             })()}
             <div><span className="muted">강도</span><span className="mono">{(signal.strength * 100).toFixed(0)}%</span></div>

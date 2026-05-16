@@ -191,16 +191,43 @@ def _coerce_bool_series(value: Any, index: pd.Index) -> pd.Series:
     return pd.Series([bool(value)] * len(index), index=index)
 
 
+class _BoolToBitwise(ast.NodeTransformer):
+    """Rewrite ``and``/``or``/``not`` into element-wise ``&``/``|``/``~``.
+
+    Plain ``eval`` resolves ``and``/``or`` via ``bool()`` short-circuiting,
+    which raises "truth value of a Series is ambiguous" on a pandas Series.
+    Bitwise operators are element-wise, so a multi-condition rule yields a
+    bool Series. The rewrite is on the AST (after ``validate_expression``),
+    so operator precedence is irrelevant — the tree already encodes grouping,
+    and no new identifiers or node kinds are introduced.
+    """
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        op: ast.operator = ast.BitAnd() if isinstance(node.op, ast.And) else ast.BitOr()
+        values = [self.visit(v) for v in node.values]
+        folded = values[0]
+        for nxt in values[1:]:
+            folded = ast.BinOp(left=folded, op=op, right=nxt)
+        return folded
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.op, ast.Not):
+            node.op = ast.Invert()
+        return node
+
+
 def _eval_one(expr: str, df: pd.DataFrame) -> pd.Series:
     locals_ = _eval_locals(df)
-    # NB: ``compile + eval`` (instead of pd.eval) so the string we evaluate is
-    # exactly the one ``validate_expression`` parsed — no risk of pandas'
-    # internal AST rewrite reaching past the validator. Builtins are stripped
-    # so even an attacker-controlled identifier cannot resolve to ``__import__``.
+    # Parse → rewrite and/or/not to element-wise &/|/~ → compile the AST
+    # directly (not pd.eval) so only validator-approved names/nodes run, with
+    # builtins stripped. ``expr`` was already checked by validate_expression.
     try:
-        code = compile(expr, "<dsl>", "eval")
+        tree = _BoolToBitwise().visit(ast.parse(expr, mode="eval"))
+        ast.fix_missing_locations(tree)
+        code = compile(tree, "<dsl>", "eval")
         result = eval(code, {"__builtins__": {}}, locals_)              # noqa: S307
-    except Exception as e:                                                   # pragma: no cover
+    except Exception as e:
         raise InvalidStrategyError(
             f"evaluation failed: {e}",
             details={"expr": expr, "type": type(e).__name__},

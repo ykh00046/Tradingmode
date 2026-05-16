@@ -131,6 +131,32 @@ def test_evaluate_rules_handles_prev() -> None:
     assert entry.iloc[0] is False or bool(entry.iloc[0]) is False  # NaN → False after fillna
 
 
+def test_evaluate_rules_handles_and_or() -> None:
+    """Multi-condition rules (and/or) must evaluate element-wise — plain
+    eval short-circuits via bool() and raises 'truth value ambiguous' on a
+    Series. Every builtin strategy template uses `and`, so this is critical."""
+    df = _toy_df()
+    entry, exit_ = strategy_engine.evaluate_rules(
+        df, "RSI_14 < 30 and close > 1", "RSI_14 > 70 or close > 8"
+    )
+    assert entry.dtype == bool and exit_.dtype == bool
+    assert int(entry.sum()) == 2          # (RSI 28, close 2) and (RSI 20, close 7)
+    assert int(exit_.sum()) == 4          # RSI 80, 75, 90 + close 9
+
+
+def test_evaluate_rules_handles_not_and_nested() -> None:
+    """`not` rewrites to element-wise ~; nested and/or keeps AST grouping."""
+    df = _toy_df()
+    # not (RSI > 30)  →  RSI <= 30  → bars 25, 28, 20
+    entry, _ = strategy_engine.evaluate_rules(df, "not (RSI_14 > 30)", "False")
+    assert int(entry.sum()) == 3
+    # (a or b) and c — grouping must be preserved
+    entry2, _ = strategy_engine.evaluate_rules(
+        df, "(RSI_14 < 30 or RSI_14 > 80) and close > 1", "False"
+    )
+    assert int(entry2.sum()) == 3          # bars 2, 7, 8
+
+
 # =============================================================================
 # trading costs
 # =============================================================================
