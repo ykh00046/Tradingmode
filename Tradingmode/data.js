@@ -343,9 +343,31 @@
     return 'neutral';
   }
 
+  // Build a synthetic instrument for an ad-hoc symbol added at runtime (demo
+  // mode). Seed + starting price are derived deterministically from the symbol
+  // string so the generated chart stays stable across reloads.
+  function makeSyntheticInstrument(meta) {
+    let h = 0;
+    for (let i = 0; i < meta.symbol.length; i++) h = (h * 31 + meta.symbol.charCodeAt(i)) | 0;
+    const abs = Math.abs(h);
+    const isKr = meta.market === 'kr';
+    const gen = {
+      seed: (abs % 99999) + 1,
+      n: N,
+      start: isKr ? 10000 + (abs % 490000) : 1 + (Math.abs(h >> 3) % 60000),
+      vol: isKr ? 0.020 : 0.035,
+      drift: ((Math.abs(h >> 5) % 30) - 12) / 10000,
+      volBase: isKr ? 2000000 : 50000,
+      baseTime: today,
+      intervalMs: day,
+    };
+    return buildInstrument(Object.assign({}, meta, { gen }));
+  }
+
   window.MarketData = {
     UNIVERSE,
     DATA,
+    makeSyntheticInstrument,
     helpers: { sma, ema, rsi, macd, bbands, classifyTrend, findCrosses, signalDirection, BUY_KINDS, SELL_KINDS },
   };
 })();

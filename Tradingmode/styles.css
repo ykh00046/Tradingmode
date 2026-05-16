@@ -112,6 +112,8 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   display: flex; align-items: baseline; gap: 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tape-label { color: var(--text-dim); letter-spacing: 0.06em; }
 .tape-value { color: var(--text); font-weight: 500; }
@@ -195,7 +197,16 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   min-height: 0;
   overflow: hidden;
 }
-.ws-left { width: 320px; border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+.ws-left {
+  width: 320px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  position: relative;
+  transition: width 220ms ease;
+}
+.ws-left.collapsed { width: 28px; overflow: hidden; }
+.ws-left.collapsed .watchlist { display: none; }
 .ws-main { flex: 1; min-width: 0; overflow-y: auto; }
 .ws-right {
   width: 320px;
@@ -249,6 +260,47 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .ws-right:not(.collapsed) .right-panel { padding-top: 4px; }
 .ws-right:not(.collapsed) .right-panel > .panel-section:first-child .panel-header { padding-left: 32px; }
 
+/* ── Left sidebar (watchlist) collapse — mirror of .ws-right ─── */
+.ws-left-toggle {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  width: 20px;
+  height: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  z-index: 10;
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 200ms ease, background 200ms ease, border-color 200ms ease;
+}
+.ws-left-toggle:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.ws-left.collapsed .ws-left-toggle {
+  right: 50%;
+  transform: translateX(50%);
+  top: 12px;
+}
+.ws-left.collapsed .ws-left-toggle::after {
+  content: '관심 종목';
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  transform: translateX(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Keep the watchlist header clear of the toggle button when expanded. */
+.ws-left:not(.collapsed) .watchlist > .panel-header { padding-right: 34px; }
+
 /* ── Watchlist ─────────────────────────────────────────── */
 .panel-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -281,9 +333,92 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .wl-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .wl-tab:hover:not(.active) { color: var(--text-mid); }
 
+/* ── Watchlist search / add symbol ─────────────────────── */
+.watchlist-search {
+  position: relative;
+  padding: 8px 12px 2px;
+}
+.wl-search {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 6px 24px 6px 8px;
+  outline: none;
+  transition: border-color 160ms ease;
+}
+.wl-search::placeholder { color: var(--text-dim); }
+.wl-search:focus { border-color: var(--accent); }
+.wl-search-clear {
+  position: absolute;
+  right: 17px;
+  top: calc(50% + 3px);
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.wl-search-clear:hover { color: var(--text); }
+
+.wl-add { padding: 10px 12px; }
+.wl-add-btn {
+  width: 100%;
+  background: oklch(0.78 0.16 75 / 0.10);
+  border: 1px dashed var(--border-strong);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 8px;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.wl-add-btn:hover:not(:disabled) {
+  background: oklch(0.78 0.16 75 / 0.18);
+  border-color: var(--accent);
+}
+.wl-add-btn:disabled { opacity: 0.6; cursor: progress; }
+.wl-add-err {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: oklch(0.74 0.18 25);
+}
+
+/* Delete button — user-added rows only, revealed on hover/focus. */
+.wl-del {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
+  z-index: 5;
+}
+.wl-row:hover .wl-del,
+.wl-row:focus-within .wl-del { opacity: 1; }
+.wl-del:hover { color: var(--down); border-color: var(--down); }
+.wl-del:focus-visible { opacity: 1; outline: 1px solid var(--accent); }
+
 .watchlist-head {
   display: grid;
-  grid-template-columns: 1fr 80px 64px 100px;
+  grid-template-columns: minmax(0, 1fr) 64px 46px 64px;
   gap: 6px;
   padding: 8px 12px 6px;
   font-size: 9px;
@@ -291,12 +426,13 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   color: var(--text-dim);
 }
 .watchlist-head > span:nth-child(2),
-.watchlist-head > span:nth-child(3) { text-align: right; }
+.watchlist-head > span:nth-child(3),
+.watchlist-head > span:nth-child(4) { text-align: right; }
 
 .watchlist-rows { display: flex; flex-direction: column; }
 .wl-row {
   display: grid;
-  grid-template-columns: 18px 1fr 80px 64px 100px;
+  grid-template-columns: 16px minmax(0, 1fr) 64px 46px 64px;
   gap: 6px;
   padding: 8px 12px;
   align-items: center;
@@ -364,7 +500,15 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 }
 .market-tag.crypto { color: var(--accent); border-color: oklch(0.78 0.16 75 / 0.4); }
 .market-tag.kr { color: var(--accent-2); border-color: oklch(0.70 0.13 230 / 0.4); }
-.wl-code { font-size: 11.5px; font-weight: 500; }
+.wl-code {
+  font-size: 11.5px;
+  font-weight: 500;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .wl-name { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-basis: 100%; }
 .wl-price { font-size: 12px; text-align: right; }
 .wl-chg { font-size: 11px; text-align: right; }

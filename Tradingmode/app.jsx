@@ -27,6 +27,29 @@ function formatPriceCompact(v) {
   return v.toFixed(2);
 }
 
+// Parse a user-typed symbol into a watchlist meta. A 6-digit string is a
+// Korean stock code; anything else is treated as a crypto pair (quote
+// defaults to USDT). Returns null when the input can't be interpreted.
+function parseSymbolInput(raw) {
+  const s = String(raw || '').trim().toUpperCase();
+  if (!s) return null;
+  if (/^\d{6}$/.test(s)) {
+    return { symbol: s, name: '', exch: 'KRX', market: 'kr', currency: 'KRW' };
+  }
+  if (/^\d+$/.test(s)) return null;            // numeric but not a 6-digit KR code
+  let base, quote;
+  if (s.includes('/')) {
+    const parts = s.split('/');
+    base = parts[0]; quote = parts[1] || 'USDT';
+  } else {
+    const m = s.match(/^([A-Z0-9]+?)(USDT|USDC|BUSD|BTC|ETH)$/);
+    if (m) { base = m[1]; quote = m[2]; }
+    else { base = s; quote = 'USDT'; }
+  }
+  if (!/^[A-Z0-9]{1,12}$/.test(base) || !/^[A-Z0-9]{2,6}$/.test(quote)) return null;
+  return { symbol: base + '/' + quote, name: base, exch: 'Binance', market: 'crypto', currency: quote };
+}
+
 function useViewportWidth() {
   const [w, setW] = useState(window.innerWidth);
   useEffect(() => {
@@ -40,8 +63,14 @@ function useViewportWidth() {
 // ─── Top bar (responsive 1280/1024 — Design v0.3 §5.3) ───────
 function TopBar({ now, fxKRW, btcSpot, marketState, snapStale }) {
   const vw = useViewportWidth();
-  const compact = vw < 1280;
-  const minimal = vw < 1024;
+  // Breakpoints are tuned to the actual fit budget: topbar chrome (logo +
+  // version on the left, market-state + clock on the right) eats ~570px, so
+  // six full tapes (~990px) only fit above ~1560px, and six compact tapes
+  // (~810px) only fit above ~1340px. Below that, drop to the 3 essential
+  // tapes — otherwise the overflow:hidden on .topbar-mid clips a tape
+  // mid-glyph and silently hides the rest (DXY/VIX).
+  const compact = vw < 1580;
+  const minimal = vw < 1440;
 
   // All 6 tapes as raw numeric values so we can compact-format consistently.
   const allTapes = [
@@ -103,8 +132,9 @@ function Tape({ label, value, change, title }) {
 }
 
 // ─── Watchlist (favorites + sort, Design v0.3 §5.4 / §4.4) ───
-function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) {
+function Watchlist({ universe, data, current, setCurrent, upColor, downColor, onAddSymbol, onRemoveSymbol, addState }) {
   const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
   const [favs, setFavs] = useState(() =>
     (window.tmStorage && window.tmStorage.get('wl-favs', [])) || []
   );
@@ -127,7 +157,27 @@ function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) 
     if (window.tmStorage) window.tmStorage.set('wl-favs', next);
   }
 
-  const filtered = universe.filter((u) => filter === 'all' || u.market === filter);
+  const q = query.trim().toLowerCase();
+  const filtered = universe.filter((u) =>
+    (filter === 'all' || u.market === filter) &&
+    (q === '' ||
+     u.symbol.toLowerCase().includes(q) ||
+     (u.name || '').toLowerCase().includes(q))
+  );
+  // No existing row matches the query → offer to add it as a new symbol.
+  const showAdd = q !== '' && filtered.length === 0;
+
+  async function doAdd() {
+    const ok = await onAddSymbol(query);
+    if (ok) setQuery('');
+  }
+  function onSearchKeyDown(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (filtered.length > 0) setCurrent(filtered[0].symbol);
+    else if (q !== '') doAdd();
+  }
+
   // Sort: favorites first (in fav-array order), then non-favs (universe order).
   const favSet = new Set(favs);
   const favRows = favs.map((s) => filtered.find((u) => u.symbol === s)).filter(Boolean);
@@ -185,6 +235,21 @@ function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) 
           {up ? '+' : ''}{(ch * 100).toFixed(2)}%
         </div>
         <div className="wl-spark"><MiniSpark candles={d.candles} upColor={upColor} downColor={downColor} /></div>
+        {u.added && (
+          <button
+            className="wl-del"
+            onClick={(e) => { e.stopPropagation(); onRemoveSymbol(u.symbol); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation(); e.preventDefault(); onRemoveSymbol(u.symbol);
+              }
+            }}
+            title="목록에서 삭제"
+            aria-label={u.symbol + ' 목록에서 삭제'}
+          >
+            ×
+          </button>
+        )}
       </div>
     );
   }
@@ -200,6 +265,20 @@ function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) 
           <button key={k} className={'wl-tab' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>{l}</button>
         ))}
       </div>
+      <div className="watchlist-search">
+        <input
+          className="wl-search"
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onSearchKeyDown}
+          placeholder="종목 검색 / 추가 (예: 035720, DOGE/USDT)"
+          aria-label="종목 검색 또는 추가"
+        />
+        {query && (
+          <button className="wl-search-clear" onClick={() => setQuery('')} aria-label="검색 지우기" title="지우기">×</button>
+        )}
+      </div>
       <div className="watchlist-head">
         <span>SYMBOL</span>
         <span>PRICE</span>
@@ -210,6 +289,22 @@ function Watchlist({ universe, data, current, setCurrent, upColor, downColor }) 
         {favRows.map(renderRow)}
         {showDivider && <div className="wl-favs-divider" aria-hidden="true" />}
         {nonFavRows.map(renderRow)}
+        {showAdd && (
+          <div className="wl-add">
+            <button
+              className="wl-add-btn"
+              onClick={doAdd}
+              disabled={addState.status === 'loading'}
+            >
+              {addState.status === 'loading'
+                ? addState.message
+                : `+ "${query.trim()}" 종목 추가`}
+            </button>
+            {addState.status === 'error' && (
+              <div className="wl-add-err" role="alert">{addState.message}</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1008,6 +1103,83 @@ function App() {
     setRightCollapsed(next);
     if (window.tmStorage) window.tmStorage.set('right-panel-collapsed', next);
   }
+  // Left watchlist sidebar collapse. Honors a stored preference; otherwise
+  // defaults to collapsed on narrow viewports (≤1100px) so the chart isn't
+  // squeezed between two 320px sidebars.
+  const [leftCollapsed, setLeftCollapsed] = useState(() => {
+    const stored = window.tmStorage ? window.tmStorage.get('left-panel-collapsed', null) : null;
+    if (stored === true || stored === false) return stored;
+    return window.innerWidth < 1100;
+  });
+  function toggleLeftPanel() {
+    const next = !leftCollapsed;
+    setLeftCollapsed(next);
+    if (window.tmStorage) window.tmStorage.set('left-panel-collapsed', next);
+  }
+  // Ad-hoc symbol add. Bumping universeVersion forces a re-render after the
+  // (in-place) mutation of window.MarketData.UNIVERSE / DATA. addState drives
+  // the watchlist's loading / error feedback. Added symbols last for the
+  // session only — they are not persisted across reloads.
+  const [, setUniverseVersion] = useState(0);
+  const [addState, setAddState] = useState({ status: 'idle', message: '' });
+  async function handleAddSymbol(rawInput) {
+    const meta = parseSymbolInput(rawInput);
+    if (!meta) {
+      setAddState({ status: 'error', message: '심볼 형식 오류 — KR 6자리 코드 또는 BTC/USDT 형식' });
+      return false;
+    }
+    meta.added = true;     // marks the row as user-added → removable
+    const existing = window.MarketData.UNIVERSE.find((u) => u.symbol === meta.symbol);
+    if (existing) {
+      setCurrent(meta.symbol);
+      setAddState({ status: 'idle', message: '' });
+      return true;
+    }
+    setAddState({ status: 'loading', message: meta.symbol + ' 불러오는 중…' });
+    try {
+      let inst;
+      if (window.DEMO_MODE) {
+        inst = window.MarketData.makeSyntheticInstrument(meta);
+      } else {
+        inst = await window.loader.loadInstrument(meta, { interval: '1d' });
+        inst.synthetic = false;
+      }
+      if (!inst || !inst.candles || inst.candles.length < 2) {
+        throw new Error(meta.symbol + ' 데이터가 없습니다');
+      }
+      window.MarketData.DATA[meta.symbol] = inst;
+      window.MarketData.UNIVERSE.push(meta);
+      // Persist so the symbol is restored on the next reload.
+      if (window.tmStorage) {
+        const saved = window.tmStorage.get('wl-added', []) || [];
+        if (!saved.some((m) => m.symbol === meta.symbol)) {
+          window.tmStorage.set('wl-added', saved.concat([meta]));
+        }
+      }
+      setUniverseVersion((v) => v + 1);
+      setCurrent(meta.symbol);
+      setAddState({ status: 'idle', message: '' });
+      return true;
+    } catch (e) {
+      setAddState({ status: 'error', message: (e && e.message) || '종목 로드 실패' });
+      return false;
+    }
+  }
+  // Remove a user-added symbol. Seed symbols (no `added` flag) are protected.
+  function handleRemoveSymbol(symbol) {
+    const uni = window.MarketData.UNIVERSE;
+    const idx = uni.findIndex((u) => u.symbol === symbol);
+    if (idx < 0 || !uni[idx].added) return;
+    uni.splice(idx, 1);
+    delete window.MarketData.DATA[symbol];
+    if (window.tmStorage) {
+      const saved = (window.tmStorage.get('wl-added', []) || []).filter((m) => m.symbol !== symbol);
+      window.tmStorage.set('wl-added', saved);
+    }
+    // If the removed symbol was being viewed, fall back to the first symbol.
+    if (current === symbol) setCurrent(uni[0] ? uni[0].symbol : 'BTC/USDT');
+    setUniverseVersion((v) => v + 1);
+  }
   const [signalsOn, setSignalsOn] = useState(true);
   const [trendBand, setTrendBand] = useState(true);
   const [dataState, setDataState] = useState(
@@ -1062,6 +1234,45 @@ function App() {
     })();
     return () => { alive = false; ctl.abort(); };
   }, [retryNonce]);
+
+  // Restore user-added symbols (persisted in tmStorage 'wl-added') once the
+  // seed universe is ready. Demo mode regenerates synthetic data; live mode
+  // re-fetches from the backend. Failures are skipped so a delisted saved
+  // symbol can't break startup. Runs exactly once via the ref guard.
+  const rehydratedRef = useRef(false);
+  useEffect(() => {
+    if (rehydratedRef.current) return;
+    if (!window.DEMO_MODE && !dataReady) return;     // wait for the seed load
+    rehydratedRef.current = true;
+    const saved = (window.tmStorage && window.tmStorage.get('wl-added', [])) || [];
+    if (!saved.length) return;
+    let cancelled = false;
+    (async () => {
+      let restored = 0;
+      for (const meta of saved) {
+        if (cancelled) return;
+        if (window.MarketData.UNIVERSE.some((u) => u.symbol === meta.symbol)) continue;
+        try {
+          let inst;
+          if (window.DEMO_MODE) {
+            inst = window.MarketData.makeSyntheticInstrument(meta);
+          } else {
+            inst = await window.loader.loadInstrument(meta, { interval: '1d' });
+            inst.synthetic = false;
+          }
+          if (!inst || !inst.candles || inst.candles.length < 2) throw new Error('no data');
+          meta.added = true;     // restored symbols stay removable
+          window.MarketData.DATA[meta.symbol] = inst;
+          window.MarketData.UNIVERSE.push(meta);
+          restored += 1;
+        } catch (e) {
+          console.warn('[App] could not restore added symbol', meta.symbol, e && e.message);
+        }
+      }
+      if (!cancelled && restored > 0) setUniverseVersion((v) => v + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [dataReady]);
 
   // TopBar market snapshot polling (30s, paused when tab is hidden).
   useEffect(() => {
@@ -1185,8 +1396,17 @@ function App() {
       </div>
 
       <div className="workspace">
-        <div className="ws-left">
-          <Watchlist universe={universe} data={data} current={current} setCurrent={setCurrent} upColor={upColor} downColor={downColor} />
+        <div className={'ws-left' + (leftCollapsed ? ' collapsed' : '')}>
+          <button
+            className="ws-left-toggle"
+            onClick={toggleLeftPanel}
+            title={leftCollapsed ? '관심 종목 펼치기' : '관심 종목 접기'}
+            aria-label={leftCollapsed ? '관심 종목 사이드바 펼치기' : '관심 종목 사이드바 접기'}
+            aria-expanded={!leftCollapsed}
+          >
+            <span className="ws-left-toggle-icon">{leftCollapsed ? '▶' : '◀'}</span>
+          </button>
+          <Watchlist universe={universe} data={data} current={current} setCurrent={setCurrent} upColor={upColor} downColor={downColor} onAddSymbol={handleAddSymbol} onRemoveSymbol={handleRemoveSymbol} addState={addState} />
         </div>
         <div className="ws-main">
           {page === 'chart' ? (

@@ -494,14 +494,14 @@ function MACDChart({ instrument, view, hoverIdx, upColor, downColor }) {
 function MiniSpark({ candles, upColor, downColor }) {
   const width = 96, height = 24;
   const last = candles.slice(-40);
-  if (!last.length) return <svg viewBox={`0 0 ${width} ${height}`} style={{ width, height, display: 'block' }} />;
+  if (!last.length) return <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: width, height, display: 'block' }} />;
   const lo = Math.min(...last.map((c) => c.l));
   const hi = Math.max(...last.map((c) => c.h));
   const range = hi - lo || 1;  // halted/flat candles → render flat midline
   const W = width, H = height;
   const cw = W / last.length;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width, height, display: 'block' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ width: '100%', maxWidth: width, height, display: 'block' }}>
       {last.map((c, i) => {
         const yh = H - ((c.h - lo) / range) * H;
         const yl = H - ((c.l - lo) / range) * H;

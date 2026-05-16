@@ -186,7 +186,12 @@ def download(
                 },
             )
         # Trim buffer rows that fall before the requested start.
-        return resampled[resampled.index >= start]
+        # pykrx / FDR daily index is tz-naive; `start` arrives tz-aware (UTC,
+        # from converters.ms_to_ts). Comparing the two raises a TypeError
+        # ("Invalid comparison between dtype=datetime64[ns] and Timestamp"),
+        # so normalise `start` to tz-naive before the cut.
+        start_cmp = start.tz_localize(None) if start.tzinfo is not None else start
+        return resampled[resampled.index >= start_cmp]
 
     except (InvalidSymbolError, DataSourceError):
         raise
