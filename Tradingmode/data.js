@@ -481,6 +481,6 @@
     UNIVERSE,
     DATA,
     makeSyntheticInstrument,
-    helpers: { sma, ema, rsi, macd, bbands, classifyTrend, findCrosses, signalDirection, signalRegimeFit, BUY_KINDS, SELL_KINDS },
+    helpers: { sma, ema, rsi, macd, bbands, rpb, wilderRma, classifyTrend, findCrosses, signalDirection, signalRegimeFit, BUY_KINDS, SELL_KINDS },
   };
 })();

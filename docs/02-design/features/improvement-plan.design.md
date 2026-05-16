@@ -1,6 +1,6 @@
 ---
 template: design
-version: 0.2
+version: 0.3
 feature: improvement-plan
 date: 2026-05-16
 author: 900033@interojo.com
@@ -149,28 +149,35 @@ for tab in [차트분석, 매매신호, 백테스팅, 포트폴리오, Strategy 
 라이브)가 **각각** 계산 → 드리프트 위험. 실제 사례: MACD 시드 버그가
 `data.js`에만 존재했음(세션에서 수정 완료).
 
-### 5.2 설계 결정 — 골든값 테스트 (option B)
+### 5.2 설계 결정 — data.js 자체 골든 스냅샷 (v0.3)
 
-데모 모드의 "오프라인·무백엔드" 속성을 유지하기 위해 **재작성(option A)
-대신 골든값 고정(option B)** 을 택한다.
+> **v0.3 조정 (Phase 3 구현 중 발견)**: v0.2는 "백엔드가 기준값 산출 →
+> data.js가 0.1% 이내로 일치"를 전제했으나 부적합으로 판명됐다. `data.js`
+> (SMA 시드)와 백엔드(pandas `adjust=False` 시드)는 EMA/Wilder **시드
+> 컨벤션이 달라** 워밍업 구간 값이 본질적으로 불일치한다 — 둘은 애초에
+> byte-identical일 수 없다. backend-parity 대신 **data.js 자체 골든 스냅샷**
+> 으로 변경한다.
 
-0. **선행 (검증 v0.2)**: `data.js`의 `window.MarketData.helpers`에
-   `rpb`(+`wilderRma`) export 추가 — 현재 `helpers`에 `sma/ema/rsi/macd/
-   bbands`만 노출돼 `rpb`를 골든 테스트로 직접 호출할 수 없다.
-1. 백엔드가 고정 시드 OHLCV에 대해 지표 기준값을 산출 → `Tradingmode/tests/
-   fixtures/indicator-golden.json` 으로 저장 (1회 생성).
-2. 신규 `Tradingmode/tests/indicators.test.mjs` (node --test) — `vm`으로
-   `data.js`를 로드(기존 `loader.test.mjs` 패턴)해 `helpers.{sma,ema,rsi,
-   macd,bbands,rpb}`를 동일 입력으로 실행, 골든값과 비교.
-3. 허용 오차: 상대오차 < 0.1%.
+데모 모드의 "오프라인·무백엔드" 속성을 유지한다.
+
+0. **선행**: `data.js`의 `window.MarketData.helpers`에 `rpb`(+`wilderRma`)
+   export 추가 — 미노출이면 골든 테스트로 직접 호출할 수 없다.
+1. RNG·초월함수(`Math.sin` 등) 없는 **결정적 OHLCV fixture** 정의 — 골든
+   생성과 검증이 byte-stable해야 한다.
+2. `data.js`의 6개 지표(`sma/ema/rsi/macd/bbands/rpb`)를 그 fixture로 실행한
+   결과를 `Tradingmode/tests/fixtures/indicator-golden.json`에 1회 저장.
+3. `Tradingmode/tests/indicators.test.mjs` (`vm`으로 data.js 로드 —
+   `loader.test.mjs` 패턴)가 동일 입력으로 재실행해 골든과 **정확 일치** 비교.
+   순수 함수 + 결정적 fixture → 허용 오차 불필요.
+
+성격: backend-parity가 아니라 **data.js 지표의 드리프트 회귀 가드**다. data.js
+지표 수학이 실수로 바뀌면 테스트가 깬다. (data.js 베이스라인은 이번 사이클
+직전에 리뷰·수정 완료된 상태 — 스냅샷은 검증된 기준선을 고정한다.)
 
 ### 5.3 완료 기준
 
-- 6개 지표 전부 골든값 대비 오차 < 0.1%.
-- 드리프트 발생 시 CI가 빨갛게 됨.
-
-> 참고: 볼린저밴드는 양쪽 모두 모집단 표준편차(ddof=0)로 *현재는 일치* —
-> 골든 테스트는 *미래 드리프트 방지*가 목적.
+- 6개 지표 전부 골든 스냅샷과 **정확 일치**.
+- data.js 지표 코드 변경 시 CI가 빨갛게 됨 (의도적 변경이면 골든 재생성).
 
 ---
 
@@ -219,7 +226,7 @@ Tradingmode/tests/fixtures/indicator-golden.json [신규] 골든값
 
 - P0-1 (백엔드): `and`/`or`·KR tz·MACD 회귀 + 빌트인 5종 통합 PASS, `pytest` 전체 GREEN.
 - P0-2 (프론트): 5탭 스모크 `pageerror 0` + 인터랙션 4종 PASS.
-- P1-1: 지표 6종 골든 패리티 오차 < 0.1% (`rpb` export 선행).
+- P1-1: 지표 6종 골든 스냅샷 정확 일치 (`rpb` export 선행).
 - 종합: CI 한 번에 `pytest` + `node --test` + `smoke.py` 실행 가능.
 
 ---
@@ -257,3 +264,4 @@ P0 테스트가 회귀를 잡아주는 상태에서 진행.
 |------|------|------|
 | 0.1 | 2026-05-16 | 최초 작성 — `improvement-plan.md` 기반 P0/P1/P2 구현 설계 |
 | 0.2 | 2026-05-16 | 설계 검증 반영 (F1~F7) — **F1** R-3을 어댑터 레벨로 재설계(`patch_fetch`가 `krx_adapter` resample을 우회) · **F2** `rpb` export 선행 명시 · **F3** 버그를 P0-1(백엔드)/P0-2(프론트)로 분류 · **F4** 신규 `golden_ohlcv` 폐기, 기존 픽스처 재사용 · **F5** Playwright 의존성 `requirements-dev.txt` 관리 명시 · **F6** MACD 인덱스 하드코딩 완화 · **F7** `project_version` 확인(현재 0.9.0의 다음 마이너 0.10.0) |
+| 0.3 | 2026-05-16 | Phase 3 구현 중 발견 반영 — §5.2 "백엔드 기준값 0.1% 패리티" 전제 폐기. `data.js`(SMA 시드)와 백엔드(pandas `adjust=False`)는 EMA/Wilder 시드 컨벤션이 달라 byte-identical 불가 → **data.js 자체 골든 스냅샷**(결정적 fixture, 정확 일치)으로 §5.2/§5.3/§9 갱신 |

@@ -335,6 +335,13 @@
       "action": "do-phase-2-completed",
       "note": "Phase 2 (P0-2 프론트엔드 스모크 테스트) 구현. Tradingmode/tests/e2e/smoke.py 신규 — Playwright, 자체 정적 서버(:5599) 스폰, 데모 모드. 5개 탭 렌더링(JS 오류 0) + 핵심 인터랙션 4종(워치리스트 종목 전환·지표 토글·인터벌 전환·신호 피드 펼치기) 검증. tests/e2e/README.md + backend/requirements-dev.txt(playwright/pytest-mock 등) 신규. 결과: 10/10 checks passed. P0(검증 기반) 완료 — Phase 3(P1-1 지표 골든 테스트) 남음.",
       "phase": "do"
+    },
+    {
+      "timestamp": "2026-05-16",
+      "feature": "improvement-plan",
+      "action": "do-phase-3-completed",
+      "note": "Phase 3 (P1-1 지표 골든 테스트) 구현. data.js helpers에 rpb/wilderRma export(설계 §5.2 step 0). tests/indicators.test.mjs + tests/fixtures/indicator-golden.json 신규. **설계 조정**: §5.2의 '백엔드 기준값' 전제가 구현 시 부적합 판명 — data.js와 백엔드는 EMA/Wilder 시드 컨벤션이 다름(전자 SMA 시드, 후자 pandas adjust=False)→워밍업 구간이 본질적으로 불일치, 0.1% parity 불가. 따라서 backend-parity 대신 data.js 자체 골든 스냅샷(RNG·초월함수 없는 결정적 fixture, 정확 일치)으로 구현 — data.js 지표 드리프트 회귀 가드. node --test 2 pass. P0+P1 검증 레이어 완료.",
+      "phase": "do"
     }
   ]
 }
